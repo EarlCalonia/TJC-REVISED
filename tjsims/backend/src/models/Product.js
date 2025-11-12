@@ -12,7 +12,8 @@ export class Product {
       status,
       description,
       vehicle_compatibility,
-      image
+      image,
+      requires_serial
     } = productData;
 
     // Generate unique product_id
@@ -21,9 +22,9 @@ export class Product {
     const productId = `P${nextId.toString().padStart(3, '0')}`;
 
     const [result] = await pool.execute(
-      `INSERT INTO products (product_id, name, brand, category, vehicle_compatibility, price, status, description, image, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [productId, name, brand, category, vehicle_compatibility || null, price, status, description, image]
+      `INSERT INTO products (product_id, name, brand, category, vehicle_compatibility, price, status, description, image, requires_serial, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [productId, name, brand, category, vehicle_compatibility || null, price, status, description, image, requires_serial ? 1 : 0]
     );
 
     return result.insertId;
@@ -82,7 +83,8 @@ export class Product {
       status,
       description,
       vehicle_compatibility,
-      image
+      image,
+      requires_serial
     } = productData;
 
     // Build dynamic update query
@@ -122,13 +124,18 @@ export class Product {
       params.push(image);
     }
 
+    if (requires_serial !== undefined) {
+      updates.push('requires_serial = ?');
+      params.push(requires_serial ? 1 : 0);
+    }
+
     if (updates.length === 0) {
       throw new Error('No fields to update');
     }
 
     params.push(id); // Add id for WHERE clause
 
-    const query = `UPDATE products SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`;
+    const query = `UPDATE products SET ${updates.join(', ')}, updated_at = NOW() WHERE product_id = ?`;
     const [result] = await pool.execute(query, params);
 
     return result.affectedRows > 0;

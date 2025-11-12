@@ -144,7 +144,8 @@ const ProductPage = () => {
       status: 'Active',
       description: '',
       vehicle_compatibility: '',
-      image: null
+      image: null,
+      requires_serial: false
     });
     setIsModalOpen(true);
   };
@@ -152,7 +153,11 @@ const ProductPage = () => {
   // Handle edit product
   const handleEditProduct = (product) => {
     setIsAddMode(false);
-    setSelectedProduct({ ...product, originalDescription: product.description || '' });
+    setSelectedProduct({ 
+      ...product, 
+      originalDescription: product.description || '',
+      requires_serial: !!product.requires_serial // <-- ADD/MODIFY THIS LINE
+    });
     setIsModalOpen(true);
   };
 
@@ -172,10 +177,16 @@ const ProductPage = () => {
       formData.append('price', selectedProduct.price);
       formData.append('status', selectedProduct.status);
       formData.append('description', selectedProduct.description);
+      formData.append('requires_serial', selectedProduct.requires_serial);
       formData.append('vehicle_compatibility', selectedProduct.vehicle_compatibility || '');
       if (selectedProduct.image && selectedProduct.image instanceof File) {
+        // User uploaded a new file
+        formData.append('image', selectedProduct.image);
+      } else if (!isAddMode && selectedProduct.image) {
+        // User is editing and DID NOT upload a new file, so send the original path
         formData.append('image', selectedProduct.image);
       }
+      // If it's Add Mode and no image, we send nothing, and it will be null. This is correct.
 
       if (isAddMode) {
         const response = await productAPI.createProduct(formData);
@@ -183,28 +194,9 @@ const ProductPage = () => {
           await loadProducts(); // Refresh the products list
         }
       } else {
-        const descChanged = (selectedProduct.description || '') !== (selectedProduct.originalDescription || '');
-        if (descChanged) {
-          const newFd = new FormData();
-          newFd.append('name', selectedProduct.name);
-          newFd.append('brand', selectedProduct.brand);
-          newFd.append('category', selectedProduct.category);
-          newFd.append('price', selectedProduct.price);
-          newFd.append('status', selectedProduct.status);
-          newFd.append('description', selectedProduct.description);
-          newFd.append('vehicle_compatibility', selectedProduct.vehicle_compatibility || '');
-          if (selectedProduct.image && selectedProduct.image instanceof File) {
-            newFd.append('image', selectedProduct.image);
-          }
-          const response = await productAPI.createProduct(newFd);
-          if (response.success) {
-            await loadProducts();
-          }
-        } else {
-          const response = await productAPI.updateProduct(selectedProduct.id, formData);
-          if (response.success) {
-            await loadProducts(); // Refresh the products list
-          }
+        const response = await productAPI.updateProduct(selectedProduct.product_id, formData);
+        if (response.success) {
+          await loadProducts(); // Refresh the products list
         }
       }
       setIsModalOpen(false);
@@ -576,6 +568,29 @@ const ProductPage = () => {
                     </label>
                   </div>
                 </div>
+
+                {/* --- ADD THIS NEW BLOCK --- */}
+                <div className="form-group">
+                  <label>Requires Serial Number</label>
+                  <div className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      id="serial-toggle"
+                      checked={selectedProduct?.requires_serial || false}
+                      onChange={(e) => setSelectedProduct({
+                        ...selectedProduct,
+                        requires_serial: e.target.checked
+                      })}
+                    />
+                    <label htmlFor="serial-toggle" className="toggle-label">
+                      <span className="toggle-slider"></span>
+                      <span className="toggle-text">
+                        {selectedProduct?.requires_serial ? 'Yes' : 'No'}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+                {/* --- END OF NEW BLOCK --- */}
 
                 <div className="form-group">
                   <label>Status</label>

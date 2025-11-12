@@ -217,6 +217,7 @@ const InventoryPage = () => {
         if (selectedProduct) {
           newProducts[index].productName = selectedProduct.name;
           newProducts[index].brand = selectedProduct.brand;
+          newProducts[index].requiresSerial = selectedProduct.requires_serial; // <-- CHECK FOR THIS LINE
         }
       }
 
@@ -848,22 +849,32 @@ const InventoryPage = () => {
                             />
                           </td>
                           <td style={{ padding: '8px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              {Array.from({ length: row.quantity || 1 }, (_, serialIndex) => (
-                                <input
-                                  key={serialIndex}
-                                  type="text"
-                                  value={row.serialNumbers?.[serialIndex] || ''}
-                                  onChange={(e) => {
-                                    const newSerials = [...(row.serialNumbers || [])];
-                                    newSerials[serialIndex] = e.target.value;
-                                    handleProductRowChange(index, 'serialNumbers', newSerials);
-                                  }}
-                                  placeholder={`Serial #${serialIndex + 1} (optional)`}
-                                  style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}
-                                />
-                              ))}
-                            </div>
+                            {/* --- Start of change --- */}
+                            {row.requiresSerial ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {Array.from({ length: row.quantity || 1 }, (_, serialIndex) => (
+                                  <input
+                                    key={serialIndex}
+                                    type="text"
+                                    value={row.serialNumbers?.[serialIndex] || ''}
+                                    onChange={(e) => {
+                                      const newSerials = [...(row.serialNumbers || [])];
+                                      newSerials[serialIndex] = e.target.value;
+                                      handleProductRowChange(index, 'serialNumbers', newSerials);
+                                    }}
+                                    placeholder={`Serial #${serialIndex + 1} (Required)`}
+                                    style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}
+                                    required
+                                  />
+                                ))}
+                              </div>
+                            ) : (
+                              // If no serial is required, show N/A
+                              <div style={{ padding: '6px', color: '#6c757d', fontSize: '13px' }}>
+                                N/A
+                              </div>
+                            )}
+                            {/* --- End of change --- */}
                           </td>
                           <td style={{ padding: '8px', textAlign: 'center' }}>
                             <button

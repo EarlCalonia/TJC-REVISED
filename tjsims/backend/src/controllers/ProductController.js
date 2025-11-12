@@ -75,6 +75,7 @@ export class ProductController {
     try {
       const productData = req.body;
       productData.image = req.file ? `/uploads/${req.file.filename}` : null;
+      productData.requires_serial = req.body.requires_serial === 'true';
 
       const productId = await Product.create(productData);
 
@@ -98,7 +99,14 @@ export class ProductController {
     try {
       const { id } = req.params;
       const productData = req.body;
-      productData.image = req.file ? `/uploads/${req.file.filename}` : productData.image;
+      // If a new file is uploaded, use its path.
+      if (req.file) {
+        productData.image = `/uploads/${req.file.filename}`;
+      } else {
+        // Otherwise, use the image path sent from the form (or null if it's empty)
+        productData.image = productData.image || null;
+      }
+      productData.requires_serial = req.body.requires_serial === 'true';
 
       const updated = await Product.update(id, productData);
 
