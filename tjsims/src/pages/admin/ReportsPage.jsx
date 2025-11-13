@@ -220,50 +220,69 @@ const ReportsPage = () => {
     setCurrentPage(page);
   };
 
-
+  // REVISION: This entire function is corrected
   const handleExportPDF = async () => {
     try {
       if (!startDate || !endDate) {
-        alert('Please select date range');
+        alert('Please select a valid date range to export.');
         return;
       }
       
       if (activeTab === 'sales') {
         // Export all sales data within the selected range (no pagination)
-        const allSalesResult = await reportsAPI.getSalesReport(startDate, endDate, 1, 999999);
-        if (allSalesResult.success) {
-          const doc = await generateSalesReportPDF(
-            allSalesResult.data.sales,
-            startDate,
-            endDate,
-            adminName,
-            rangeLabel
-          );
-          doc.save(`Sales_Report_${startDate}_to_${endDate}.pdf`);
+        const allSalesResult = await reportsAPI.getSalesReport({
+          start_date: startDate,
+          end_date: endDate,
+          page: 1,
+          limit: 999999 // Fetch all
+        });
+        
+        const salesDataForPDF = allSalesResult.data?.sales || allSalesResult.sales || [];
+        
+        if (salesDataForPDF.length === 0) {
+          alert('No sales data found for this period.');
+          return;
         }
-      } else {
-        // Export inventory report
-        const allInventoryResult = await reportsAPI.getInventoryReport(
-          stockStatus,
-          brandFilter,
-          categoryFilter,
-          1,
-          999999
+
+        const doc = await generateSalesReportPDF(
+          salesDataForPDF,
+          startDate,
+          endDate,
+          adminName,
+          rangeLabel
         );
-        if (allInventoryResult.success) {
-          const doc = await generateInventoryReportPDF(
-            allInventoryResult.data.items,
-            stockStatus,
-            brandFilter,
-            categoryFilter,
-            adminName
-          );
-          doc.save(`Inventory_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+        doc.save(`Sales_Report_${startDate}_to_${endDate}.pdf`);
+        
+      } else { // activeTab is 'inventory'
+      
+        // Export inventory report
+        const allInventoryResult = await reportsAPI.getInventoryReport({
+          stock_status: stockStatus && stockStatus !== 'All Status' ? stockStatus : undefined,
+          brand: brandFilter && brandFilter !== 'All Brand' ? brandFilter : undefined,
+          category: categoryFilter && categoryFilter !== 'All Categories' ? categoryFilter : undefined,
+          page: 1,
+          limit: 999999 // Fetch all
+        });
+
+        const inventoryDataForPDF = allInventoryResult.data?.inventory || allInventoryResult.data?.products || allInventoryResult.inventory || [];
+
+        if (inventoryDataForPDF.length === 0) {
+          alert('No inventory data found for these filters.');
+          return;
         }
+
+        // Corrected arguments: (inventoryData, startDate, endDate, adminName)
+        const doc = await generateInventoryReportPDF(
+          inventoryDataForPDF,
+          startDate,
+          endDate,
+          adminName
+        );
+        doc.save(`Inventory_Report_${startDate}_to_${endDate}.pdf`);
       }
     } catch (error) {
       console.error('Error exporting PDF:', error);
-      alert('Failed to export PDF');
+      alert('Failed to export PDF: ' + error.message);
     }
   };
   
@@ -321,6 +340,8 @@ const ReportsPage = () => {
                   <input
                     type={rangeLabel === 'Weekly' ? 'week' : rangeLabel === 'Monthly' ? 'month' : 'date'}
                     id="start-date"
+                    // REVISION: Use value={startDate} for Daily, otherwise let it be handled by onChange
+                    value={rangeLabel === 'Daily' ? startDate : undefined}
                     onChange={(e) => handleDateChange(e.target.value, true)}
                     className="date-input"
                   />
@@ -351,6 +372,28 @@ const ReportsPage = () => {
                 )}
                 {activeTab === 'inventory' && (
                   <>
+                    {/* REVISION: Added date pickers for inventory tab as well */}
+                    <div className="date-input-group">
+                      <label htmlFor="start-date-inv">From</label>
+                      <input
+                        type="date"
+                        id="start-date-inv"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="date-input"
+                      />
+                    </div>
+                    <div className="date-input-group">
+                      <label htmlFor="end-date-inv">To</label>
+                      <input
+                        type="date"
+                        id="end-date-inv"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="date-input"
+                      />
+                    </div>
+                    {/* End of added date pickers */}
                     <div className="date-input-group">
                       <label htmlFor="brand-filter">Brand</label>
                       <select id="brand-filter" value={brandFilter} onChange={(e)=>setBrandFilter(e.target.value)} className="date-input">
