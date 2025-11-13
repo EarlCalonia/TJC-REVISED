@@ -771,24 +771,30 @@ const SalesPage = () => {
                             */}
                             <td>
                               <div className="action-buttons-cell">
-                                {product.requires_serial && (
-                                  <button
-                                    onClick={() => handleOpenSerialModal(product)}
-                                    disabled={product.stock === 0}
-                                    className="select-serial-btn"
-                                  >
-                                    Select Serial
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => addToSale(product)}
-                                  disabled={product.stock === 0}
-                                  className="add-to-sale-btn"
-                                >
-                                  <BsCartPlus className="sale-icon" />
-                                  Add to Sale
-                                </button>
-                              </div>
+
+    {/* This part checks if a serial is required.
+        If true, it renders the button.
+        If false, it renders NOTHING (which fixes the "0" bug). */}
+    {product.requires_serial && (
+      <button
+        onClick={() => handleOpenSerialModal(product)}
+        disabled={product.stock === 0}
+        className="select-serial-btn"
+      >
+        Select Serial
+      </button>
+    )}
+
+    {/* This button is separate and will always appear */}
+    <button
+      onClick={() => addToSale(product)}
+      disabled={product.stock === 0}
+      className="add-to-sale-btn"
+    >
+      <BsCartPlus className="sale-icon" />
+      Add to Sale
+    </button>
+  </div>
                             </td>
                           </tr>
                         );
