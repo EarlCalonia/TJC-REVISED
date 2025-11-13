@@ -710,45 +710,55 @@ const SalesPage = () => {
                         <th>Actions</th>
                       </tr>
                     </thead>
-                    {/* REVISION: This entire tbody is corrected to remove the "0" bug
-                        and to use the correct "addToSale" function. */}
                     <tbody>
                       {filteredProducts.map(product => {
                         const productSerials = selectedSerials[product.product_id] || [];
                         const requiredQty = quantities[product.product_id] || 1;
                         return (
-                          <tr key={product.product_id}>
-                            <td>{product.name}</td>
+                          <tr key={product.product_id} className={product.stock === 0 ? 'row-disabled' : ''}>
+                            <td className="product-name-text">{product.name}</td>
                             <td>{product.brand}</td>
-                            <td>₱{product.price.toLocaleString()}</td>
-                            <td className={
-                              product.stock === 0 ? 'out-of-stock' : 
-                              product.stock <= (product.reorder_point || 10) / 2 ? 'low-stock' : 
-                              'good-stock'
-                            }>
-                              {product.stock === 0 ? 'Out of Stock' : product.stock}
+                            <td className="price-cell">₱{product.price.toLocaleString()}</td>
+                            
+                            {/* --- THIS IS THE FIXED STOCK CELL --- */}
+                            <td className="stock-cell-sales">
+                              <span className={
+                                product.stock === 0 ? 'out-of-stock' : 
+                                product.stock <= (product.reorder_point || 10) / 2 ? 'low-stock' : 
+                                'good-stock'
+                              }>
+                                {product.stock === 0 ? 'Out of Stock' :
+                                 product.stock <= (product.reorder_point || 10) / 2 ? 'Low on Stock' :
+                                 'In Stock'}
+                              </span>
                             </td>
+                            {/* --- END OF FIX --- */}
+
                             <td>
-                              <div className="quantity-controls">
-                                <button
-                                  onClick={() => handleQuantityChange(product.product_id, -1)}
-                                  disabled={product.stock === 0 || (quantities[product.product_id] || 1) <= 1}
-                                  className="quantity-btn"
-                                >
-                                  -
-                                </button>
-                                <span className="quantity-display">
-                                  {quantities[product.product_id] || 1}
-                                </span>
-                                <button
-                                  onClick={() => handleQuantityChange(product.product_id, 1)}
-                                  disabled={product.stock === 0}
-                                  className="quantity-btn"
-                                >
-                                  +
-                                </button>
-                              </div>
+                              {product.stock > 0 ? (
+                                <div className="quantity-controls">
+                                  <button
+                                    onClick={() => handleQuantityChange(product.product_id, -1)}
+                                    disabled={(quantities[product.product_id] || 1) <= 1}
+                                    className="quantity-btn"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="quantity-display">
+                                    {quantities[product.product_id] || 1}
+                                  </span>
+                                  <button
+                                    onClick={() => handleQuantityChange(product.product_id, 1)}
+                                    className="quantity-btn"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="quantity-disabled">—</span>
+                              )}
                             </td>
+
                             <td>
                               {product.requires_serial ? (
                                 <div style={{ fontSize: '12px' }}>
@@ -768,13 +778,9 @@ const SalesPage = () => {
                               )}
                             </td>
                             
-                            {/* THIS IS THE CORRECTED "ACTIONS" CELL */}
                             <td>
                               <div className="action-buttons-cell">
-                                
-                                {/* This part only renders if 'requires_serial' is true.
-                                    There is no 'else' block, so it will not render "0". */}
-                                {product.requires_serial && (
+                                {!!product.requires_serial && (
                                   <button
                                     onClick={() => handleOpenSerialModal(product)}
                                     disabled={product.stock === 0}
@@ -784,7 +790,6 @@ const SalesPage = () => {
                                   </button>
                                 )}
                                 
-                                {/* This button renders separately and calls addToSale */}
                                 <button
                                   onClick={() => addToSale(product)}
                                   disabled={product.stock === 0}

@@ -351,30 +351,32 @@
   text-align: center;
 }
 
+/* --- REVISED STOCK BADGES (Text-Only) --- */
 .stock-status-badge {
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  /* REMOVED: padding, border-radius, background-color */
+  font-size: 0.9rem; /* Make it slightly larger */
+  font-weight: 700;
   text-align: center;
   min-width: 80px;
   display: inline-block;
 }
 
 .stock-status-badge.in-stock {
-  background-color: #d4edda;
-  color: #155724;
+  /* REMOVED: background-color */
+  color: #155724; /* Green */
 }
 
 .stock-status-badge.low-stock {
-  background-color: #fff3cd;
-  color: #856404;
+  /* REMOVED: background-color */
+  color: #856404; /* Orange */
 }
 
 .stock-status-badge.out-of-stock {
-  background-color: #f8d7da;
-  color: #721c24;
+  /* REMOVED: background-color */
+  color: #721c24; /* Red */
 }
+/* --- END REVISED STOCK BADGES --- */
+
 
 .action-buttons {
   display: flex;
