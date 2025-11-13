@@ -751,24 +751,27 @@ const SalesPage = () => {
                             </td>
                             <td>
                               <div className="action-buttons-cell">
-                                {product.requires_serial && (
-                                  <button
-                                    onClick={() => handleOpenSerialModal(product)}
-                                    disabled={product.stock === 0}
-                                    className="select-serial-btn"
-                                  >
-                                    Select Serial
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => addToSale(product)}
-                                  disabled={product.stock === 0}
-                                  className="add-to-sale-btn"
-                                >
-                                  <BsCartPlus className="sale-icon" />
-                                  Add to Sale
-                                </button>
-                              </div>
+                        {/* This part only renders the "Select Serial" button IF it's required */}
+                        {product.requires_serial && (
+                          <button
+                            onClick={() => handleOpenSerialModal(product)}
+                            disabled={product.stock === 0}
+                            className="select-serial-btn"
+                          >
+                            Select Serial
+                          </button>
+                        )}
+
+                        {/* This button ALWAYS renders (and there is no "else 0" logic) */}
+                        <button
+                          onClick={() => addToSale(product)}
+                          disabled={product.stock === 0}
+                          className="add-to-sale-btn"
+                        >
+                          <BsCartPlus className="sale-icon" />
+                          Add to Sale
+                        </button>
+                      </div>
                             </td>
                           </tr>
                         );
