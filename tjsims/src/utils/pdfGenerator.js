@@ -26,12 +26,10 @@ const bufferToBase64 = (buffer) => {
   return btoa(binary);
 };
 
-// REVISION: Removed ensureUnicodeFont function as it's no longer needed.
-
 // Utility function to format currency
 const formatCurrency = (amount) => {
   const num = Number(amount) || 0;
-  // REVISION: Always use 'PHP' for reliability in PDF
+  // Use 'PHP ' for reliability in PDF
   return `PHP ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
@@ -105,21 +103,18 @@ if (logoDataUrl) {
   doc.text(`Period: ${formatPeriodText(startDate, endDate, rangeLabel)}`, centerX, dateY, { align: 'center' });
 }
 
-  // Filter data by date range
-  // Filter orders by date and status (Completed only)
-  const filteredOrders = (salesData || []).filter(order => {
-    const d = new Date(order.orderDate);
-    const withinRange = d >= new Date(startDate) && d <= new Date(endDate);
-    const isCompleted = (order.status ?? 'Completed') === 'Completed';
-    return withinRange && isCompleted;
-  });
+  // REVISION: Removed the buggy, redundant filtering block that was here.
+  // The API already filtered the data, so we just use what was given.
+  const filteredOrders = salesData || [];
 
   // Flatten the filtered data for table display
   const flattenedData = filteredOrders.flatMap(order =>
-    order.items.map(item => ({
+    // REVISION: Filter for only 'Completed' items, as API sends 'Partially Returned' too
+    order.items.filter(item => (order.status ?? 'Completed') === 'Completed').map(item => ({
       orderId: order.orderId,
       customerName: order.customerName,
-      orderDate: order.orderDate,
+      // REVISION: Use the formatted orderDate string directly
+      orderDate: formatDate(order.orderDate),
       productName: item.productName,
       quantity: Number(item.quantity) || 0,
       unitPrice: Number(item.unitPrice) || 0,
@@ -190,7 +185,8 @@ if (logoDataUrl) {
       ? item.productName.substring(0, maxProductNameLength) + '...'
       : item.productName;
 
-    doc.text(formatDate(item.orderDate), colPositions.date, yPosition);
+    // REVISION: item.orderDate is already a formatted string
+    doc.text(item.orderDate, colPositions.date, yPosition);
     doc.text(productName, colPositions.productName, yPosition);
     doc.text((Number(item.quantity) || 0).toString(), colPositions.quantity, yPosition);
     doc.text(formatCurrency(Number(item.unitPrice) || 0), colPositions.unitPrice, yPosition);
@@ -217,20 +213,20 @@ if (logoDataUrl) {
   yPosition += 15;
 
   // Calculate summary data
-  const totalRevenue = filteredOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
-  const totalItems = filteredOrders.reduce((sum, order) => {
-    return sum + order.items.reduce((itemSum, item) => itemSum + (Number(item.quantity) || 0), 0);
-  }, 0);
-  const totalTransactions = filteredOrders.length;
+  // REVISION: Filter for 'Completed' status here for accurate summary
+  const completedOrders = filteredOrders.filter(order => (order.status ?? 'Completed') === 'Completed');
+  
+  const totalRevenue = completedOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+  const totalItems = flattenedData.reduce((sum, item) => sum + item.quantity, 0); // Use flattened data (which is already filtered)
+  const totalTransactions = completedOrders.length;
   const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
-  // Find best selling product
+  // Find best selling product from the flattened (and filtered) data
   const productCounts = {};
-  filteredOrders.forEach(order => {
-    order.items.forEach(item => {
-      productCounts[item.productName] = (productCounts[item.productName] || 0) + item.quantity;
-    });
+  flattenedData.forEach(item => {
+    productCounts[item.productName] = (productCounts[item.productName] || 0) + item.quantity;
   });
+  
   const bestSellingProduct = Object.keys(productCounts).reduce((a, b) =>
     productCounts[a] > productCounts[b] ? a : b, 'N/A');
 
@@ -297,7 +293,7 @@ export const generateSaleReceipt = async ({
   const pageWidth = doc.internal.pageSize.getWidth();
   let y = 40;
 
-  // REVISION: Always use 'PHP '
+  // Use 'PHP ' for reliability
   const peso = (n) => {
     const v = Number(n) || 0;
     const sym = 'PHP ';
@@ -420,7 +416,8 @@ export const generateInventoryReportPDF = async (inventoryData, startDate, endDa
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  doc.text(`Period: ${formatDate(startDate)} - ${formatDate(endDate)}`, pageWidth / 2, yPosition, { align: 'center' });
+  // REVISION: Show "As of" date instead of period for inventory
+  doc.text(`As of ${formatDate(new Date().toISOString())}`, pageWidth / 2, yPosition, { align: 'center' });
   yPosition += 10;
 
   // Table headers
