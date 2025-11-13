@@ -450,7 +450,9 @@ export const dashboardAPI = {
     const search = new URLSearchParams();
     if (typeof params === 'string') {
       search.append('period', params);
-    } else (params && typeof params === 'object') {
+    } 
+    // REVISION: Fixed 'else' to 'else if'
+    else if (params && typeof params === 'object') {
       if (params.period) search.append('period', params.period);
       if (params.start_date) search.append('start_date', params.start_date);
       if (params.end_date) search.append('end_date', params.end_date);
