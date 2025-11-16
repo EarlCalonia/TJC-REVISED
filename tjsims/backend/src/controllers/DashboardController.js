@@ -288,4 +288,34 @@ export class DashboardController {
       });
     }
   }
+
+  // --- NEW FUNCTION ---
+  // Get sales aggregated by category
+  static async getSalesByCategory(req, res) {
+    try {
+      const pool = getPool();
+      const [categories] = await pool.execute(
+        `SELECT
+           p.category,
+           COALESCE(SUM(si.subtotal), 0) as total_revenue
+         FROM products p
+         JOIN sale_items si ON p.product_id = si.product_id
+         JOIN sales s ON si.sale_id = s.id
+         WHERE s.status <> 'Cancelled'
+           AND s.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+         GROUP BY p.category
+         ORDER BY total_revenue DESC`
+      );
+      res.json({
+        success: true,
+        data: categories
+      });
+    } catch (error) {
+      console.error('Error fetching sales by category:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch sales by category'
+      });
+    }
+  }
 }

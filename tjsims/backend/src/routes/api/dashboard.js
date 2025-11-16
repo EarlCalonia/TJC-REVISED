@@ -21,4 +21,8 @@ router.get('/fast-moving', DashboardController.getFastMovingProducts);
 // Get slow moving products
 router.get('/slow-moving', DashboardController.getSlowMovingProducts);
 
+// --- NEW ROUTE ---
+// Get sales aggregated by category
+router.get('/sales-by-category', DashboardController.getSalesByCategory);
+
 export default router;

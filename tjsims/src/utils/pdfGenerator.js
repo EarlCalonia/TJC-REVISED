@@ -279,7 +279,8 @@ if (logoDataUrl) {
   return doc;
 };
 
-// Generate a single sale receipt PDF
+
+// --- STANDARD RECEIPT FUNCTION (WITH LAYOUT FIX) ---
 export const generateSaleReceipt = async ({
   saleNumber,
   customerName,
@@ -294,7 +295,15 @@ export const generateSaleReceipt = async ({
 }) => {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
-  let y = 40;
+  const margin = 40;
+  const contentWidth = pageWidth - (margin * 2);
+  let y = margin;
+  const FONT_SIZE_BODY = 10;
+  const FONT_SIZE_SMALL = 8;
+  const FONT_SIZE_HEADER = 12;
+  const LINE_HEIGHT = 1.2 * FONT_SIZE_BODY;
+  const SMALL_LINE_HEIGHT = 1.2 * FONT_SIZE_SMALL;
+
 
   // Use 'PHP ' for reliability
   const peso = (n) => {
@@ -302,96 +311,202 @@ export const generateSaleReceipt = async ({
     const sym = 'PHP ';
     return `${sym}${v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
-
+  
   const logoDataUrl = await loadImageAsDataURL(logoUrl);
+  
+  // === 1. HEADER (CENTERED) ===
   if (logoDataUrl) {
-    const imgWidth = 70;
-    const imgHeight = 52;
-    const x = (pageWidth - imgWidth) / 2;
+    const imgWidth = 80;
+    const imgHeight = 59;
+    const x = (pageWidth - imgWidth) / 2; // Center the logo
     doc.addImage(logoDataUrl, 'PNG', x, y, imgWidth, imgHeight);
     y += imgHeight + 10;
   }
-
-  // Header
+  
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('TJC Sales Receipt', pageWidth / 2, y, { align: 'center' });
-  y += 14;
-
+  doc.setFontSize(FONT_SIZE_HEADER);
+  doc.text('TJC AUTO SUPPLY', pageWidth / 2, y, { align: 'center' });
+  y += LINE_HEIGHT;
+  
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(11);
-  const dateStr = new Date(createdAt).toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const marginLeft = 60;
-  const marginRight = 60;
-  const amountRightX = pageWidth - marginRight;
-  doc.text(`Order #: ${saleNumber}`, marginLeft, y); y += 14;
-  if (customerName) { doc.text(`Customer: ${customerName}`, marginLeft, y); y += 14; }
-  if (address) { doc.text(`Address: ${address}`, marginLeft, y); y += 14; }
-  doc.text(`Date: ${dateStr}`, marginLeft, y); y += 14;
-  doc.text(`Payment: ${paymentMethod}`, marginLeft, y); y += 10;
+  doc.setFontSize(FONT_SIZE_BODY);
+  doc.text('General Hizon Avenue, Santa Lucia, City of San Fernando, Pampanga', pageWidth / 2, y, { align: 'center' });
+  y += LINE_HEIGHT;
+  doc.text('0912 345 6789 | tjcautosupply@gmail.com', pageWidth / 2, y, { align: 'center' });
+  y += 25;
 
-  // Separator
-  doc.setLineWidth(0.8);
-  doc.line(marginLeft, y, pageWidth - marginRight, y);
-  y += 14;
-
-  // Table headers
-  const colName = marginLeft;
-  const colQty = 330;
-  const colUnit = 400;
-  const colSub = amountRightX;
+  // === 2. RECEIPT TITLE & DETAILS (PANEL LAYOUT) ===
   doc.setFont('helvetica', 'bold');
-  doc.text('Product', colName, y);
-  doc.text('Qty', colQty, y);
-  doc.text('Unit', colUnit, y);
-  doc.text('Subtotal', colSub, y, { align: 'right' });
-  y += 6;
-  doc.setLineWidth(0.5);
-  doc.line(marginLeft, y, pageWidth - marginRight, y);
-  y += 10;
-  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(16);
+  doc.text('OFFICIAL RECEIPT', pageWidth / 2, y, { align: 'center' });
+  y += 30;
 
-  // Items
-  items.forEach((it) => {
-    if (y > 700) { doc.addPage(); y = 40; }
-    const name = String(it.name || it.product_name || it.productName || '').slice(0, 48);
+  const panel1_X = margin;
+  const panel2_X = margin + (contentWidth / 2) + 10;
+  const panelWidth = (contentWidth / 2) - 10;
+  
+  const adminName = localStorage.getItem('username') || 'Admin';
+  const dateStr = new Date(createdAt).toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
+
+  // Draw details in two columns
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT_SIZE_BODY);
+  
+  // Column 1
+  let y1 = y;
+  doc.text(`Order #:`, panel1_X, y1);
+  doc.text(`Customer:`, panel1_X, y1 + LINE_HEIGHT);
+  doc.text(`Address:`, panel1_X, y1 + (LINE_HEIGHT * 2));
+
+  doc.setFont('helvetica', 'bold');
+  doc.text(`${saleNumber}`, panel1_X + 70, y1);
+  doc.text(`${customerName || 'N/A'}`, panel1_X + 70, y1 + LINE_HEIGHT);
+  // Wrap address if it's long
+  const addressLines = doc.splitTextToSize(address || (shippingOption === 'In-Store Pickup' ? 'In-Store Pickup' : 'N/A'), panelWidth - 70);
+  doc.text(addressLines, panel1_X + 70, y1 + (LINE_HEIGHT * 2));
+  
+  // Column 2
+  let y2 = y;
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Date:`, panel2_X, y2);
+  doc.text(`Cashier:`, panel2_X, y2 + LINE_HEIGHT);
+  doc.text(`Payment:`, panel2_X, y2 + (LINE_HEIGHT * 2));
+  
+  doc.setFont('helvetica', 'bold');
+  doc.text(`${dateStr}`, panel2_X + 80, y2);
+  doc.text(`${adminName}`, panel2_X + 80, y2 + LINE_HEIGHT);
+  doc.text(`${paymentMethod}`, panel2_X + 80, y2 + (LINE_HEIGHT * 2));
+
+  // Adjust 'y' to the bottom of the tallest panel
+  y = Math.max(y1 + ((addressLines.length + 1) * LINE_HEIGHT), y2 + (LINE_HEIGHT * 3)) + 20;
+
+  // === 3. ITEMS TABLE ===
+  const tableHeaderY = y;
+  
+  // --- THIS IS THE FIX ---
+  // Redefine column X positions to give more space
+  const colAmt_Right = pageWidth - margin - 5;        // Right edge of Amount
+  const colUnit_Right = colAmt_Right - 90;          // Right edge of Unit Price (90pt wide)
+  const colQty_Center = colUnit_Right - 45;         // Center of Qty (45pt from Unit Price)
+  const colName_Left = margin + 5;                  // Left edge of Item
+  const colName_Width = colQty_Center - 25 - colName_Left; // Width of Item column
+  // --- END OF FIX ---
+  
+  const minRowHeight = 25; // Minimum height for a row
+
+  // Table Header
+  doc.setFillColor(241, 243, 245); // Set fill to light gray (like the report)
+  doc.rect(margin, tableHeaderY, contentWidth, 20, 'F'); // Draw the header rectangle
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT_SIZE_BODY);
+  doc.text('Item Description', colName_Left, tableHeaderY + 14);
+  doc.text('Qty', colQty_Center, tableHeaderY + 14, { align: 'center' });
+  doc.text('Unit Price', colUnit_Right, tableHeaderY + 14, { align: 'right' });
+  doc.text('Amount', colAmt_Right, tableHeaderY + 14, { align: 'right' });
+
+  y = tableHeaderY + 20;
+
+  // Table Rows
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT_SIZE_BODY);
+  
+  items.forEach((it, index) => {
+    // Check for page break
+    if (y > 750) { 
+      doc.addPage();
+      y = margin;
+      //... (Repeat table header logic if needed) ...
+    }
+
+    const name = String(it.name || it.product_name || it.productName || '');
+    const nameLines = doc.splitTextToSize(name, colName_Width);
+    
+    // Check for serial numbers
+    const serials = it.serialNumbers || it.serial_numbers || [];
+    let serialLines = [];
+    if (serials.length > 0) {
+      const serialString = "Serials: " + serials.join(', ');
+      // Indent serial numbers slightly
+      serialLines = doc.splitTextToSize(serialString, colName_Width - 5); 
+    }
+    
+    // Calculate row height based on wrapped text for BOTH name and serials
+    const nameHeight = nameLines.length * LINE_HEIGHT;
+    const serialHeight = serialLines.length * SMALL_LINE_HEIGHT;
+    const rowHeight = Math.max(minRowHeight, nameHeight + serialHeight + 10); // +10 for padding
+    
+    const yTextStart = y + 16; // Vertical position for text (16pt from top of row)
+
     const qty = Number(it.quantity || 0);
     const unit = Number(it.price || it.unitPrice || 0);
     const sub = unit * qty;
-    doc.text(name, colName, y);
-    doc.text(String(qty), colQty, y);
-    doc.text(peso(unit), colUnit, y);
-    doc.text(peso(sub), colSub, y, { align: 'right' });
-    y += 12;
+    
+    // Draw text
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(FONT_SIZE_BODY);
+    doc.text(nameLines, colName_Left, yTextStart);
+    
+    if (serialLines.length > 0) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(FONT_SIZE_SMALL);
+      doc.text(serialLines, colName_Left + 5, yTextStart + nameHeight); // Place below the name
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT_SIZE_BODY);
+    }
+
+    // Draw the rest of the row, aligned with the top text
+    doc.text(String(qty), colQty_Center, yTextStart, { align: 'center' });
+    doc.text(peso(unit), colUnit_Right, yTextStart, { align: 'right' });
+    doc.text(peso(sub), colAmt_Right, yTextStart, { align: 'right' });
+
+    // Draw lines for the row
+    doc.setLineWidth(0.5);
+    doc.setDrawColor(222, 226, 230); // Light gray border
+    doc.line(margin, y + rowHeight, pageWidth - margin, y + rowHeight); // Horizontal line
+
+    y += rowHeight; // Move y by the calculated row height
   });
+  
+  
+  // === 4. TOTALS SECTION ===
+  y += 15;
+  const totalLabelX = contentWidth - 100; // Right-align point for labels
+  const totalValueX = pageWidth - margin - 5; // Right-align point for values
 
-  // Totals
-  y += 4; doc.line(marginLeft, y, pageWidth - marginRight, y); y += 12;
-  doc.setFont('helvetica', 'bold');
-  const labelX = colUnit - 10;
-  doc.text('Total:', labelX, y);
-  doc.text(peso(totalAmount), colSub, y, { align: 'right' });
-  y += 14;
+  // Subtotal
   doc.setFont('helvetica', 'normal');
-  if (paymentMethod.toLowerCase() === 'cash') {
-    doc.text('Cash Tendered:', labelX, y);
-    doc.text(peso(tenderedAmount), colSub, y, { align: 'right' });
-    y += 12;
-    doc.text('Change:', labelX, y);
-    doc.text(peso(changeAmount), colSub, y, { align: 'right' });
-    y += 12;
-  }
-  if (shippingOption) {
-    y += 4;
-    doc.text(`Delivery: ${shippingOption}`, marginLeft, y); y += 12;
+  doc.setFontSize(FONT_SIZE_BODY);
+  doc.text('Subtotal:', totalLabelX, y, { align: 'right' });
+  doc.text(peso(totalAmount), totalValueX, y, { align: 'right' });
+  y += LINE_HEIGHT;
+
+  if (paymentMethod.toLowerCase() === 'cash' && tenderedAmount > 0) {
+    doc.text('Cash Tendered:', totalLabelX, y, { align: 'right' });
+    doc.text(peso(tenderedAmount), totalValueX, y, { align: 'right' });
+    y += LINE_HEIGHT;
+    
+    doc.text('Change:', totalLabelX, y, { align: 'right' });
+    doc.text(peso(changeAmount), totalValueX, y, { align: 'right' });
+    y += (LINE_HEIGHT * 1.5); // Extra space before total
   }
 
-  y += 10;
+  // Grand Total
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT_SIZE_HEADER + 2); // Make total bigger
+  doc.text('TOTAL:', totalLabelX, y, { align: 'right' });
+  doc.text(peso(totalAmount), totalValueX, y, { align: 'right' });
+  y += (LINE_HEIGHT * 2);
+
+  // === 5. FOOTER ===
+  y = Math.max(y, 800); // Push footer to bottom
   doc.setFont('helvetica', 'italic');
+  doc.setFontSize(FONT_SIZE_BODY);
   doc.text('Thank you for your purchase!', pageWidth / 2, y, { align: 'center' });
 
   return doc;
 };
+
 
 // Generate Inventory Report PDF
 export const generateInventoryReportPDF = async (inventoryData, startDate, endDate, adminName) => {

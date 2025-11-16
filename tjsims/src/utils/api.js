@@ -506,6 +506,14 @@ export const dashboardAPI = {
     });
     return handleResponse(response);
   },
+
+  // --- NEW FUNCTION ---
+  getSalesByCategory: async () => {
+    const response = await fetch(`${API_BASE_URL}/dashboard/sales-by-category`, {
+      credentials: 'include'
+    });
+    return handleResponse(response);
+  },
 };
 
 // Returns API functions

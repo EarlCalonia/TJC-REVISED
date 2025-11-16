@@ -89,7 +89,20 @@
   font-weight: 600;
 }
 
-.action-buttons-cell { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+/* --- THIS SECTION IS MODIFIED --- */
+.action-buttons-cell { 
+  display: flex; 
+  flex-direction: column; /* Stack buttons vertically */
+  gap: 8px; /* Space between stacked buttons */
+  align-items: stretch; /* Make buttons fill width */
+  width: 150px; /* Set a consistent width for the container */
+}
+
+.action-buttons-cell .btn {
+  width: 100%; /* Make buttons fill the container */
+  margin: 0;
+}
+/* --- END OF MODIFICATION --- */
 
 
 /* Right Column: Sale */
