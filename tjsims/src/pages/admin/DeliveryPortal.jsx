@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { BsSearch } from 'react-icons/bs';
 import '../../styles/DeliveryPortal.css';
 import tcjLogo from '../../assets/tcj_logo.png';
+// --- FIX: Ensure all required APIs are imported ---
 import { salesAPI } from '../../utils/api';
+import { serialNumberAPI } from '../../utils/serialNumberApi'; // <-- CRITICAL: Must be imported
 
 const DeliveryPortal = () => {
   const navigate = useNavigate();
@@ -17,32 +19,79 @@ const DeliveryPortal = () => {
   const riderName = localStorage.getItem('username') || localStorage.getItem('userEmail') || 'Rider';
   const riderAvatar = localStorage.getItem('avatar');
 
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    salesAPI.getSales({ status: 'Processing' })
-      .then((list) => {
-        const filtered = (list || []).filter(s => {
-          const addr = (s.address || '').toLowerCase();
-          return addr.includes('pampanga') || addr.includes('bulacan') || addr.includes('manila');
-        });
-        const mapped = filtered.map(s => ({
+  // --- START FETCH ORDERS FUNCTION ---
+  const fetchOrders = async () => {
+    try {
+      // 1. Fetch all sales marked as 'Processing'
+      const list = await salesAPI.getSales({ status: 'Processing' });
+      const filtered = (list || []).filter(s => {
+        const addr = (s.address || '').toLowerCase();
+        // Filter orders based on hardcoded delivery regions
+        return addr.includes('pampanga') || addr.includes('bulacan') || addr.includes('manila');
+      });
+
+      // 2. Fetch items and serials for all relevant orders concurrently
+      const mappedPromises = filtered.map(async (s) => {
+        let productListString = 'See details';
+        let items = [];
+        try {
+          // Fetch order items
+          const itemsResponse = await salesAPI.getSaleItems(s.id);
+          // Fetch all serial numbers for the entire sale
+          const serialsResponse = await serialNumberAPI.getBySaleId(s.id);
+          const allSerials = serialsResponse.data || [];
+
+          // Merge serial numbers into their corresponding items
+          items = itemsResponse.map(item => {
+            const serial_numbers = allSerials
+                .filter(sn => sn.sale_item_id === item.id)
+                .map(sn => sn.serial_number);
+            
+            return { ...item, serial_numbers };
+          });
+          
+          // Format the product list (for the main table view)
+          productListString = (items || []).map(item => {
+            const serialSuffix = (item.serial_numbers?.length > 0) ? ` - Serials: ${item.serial_numbers.join(', ')}` : '';
+            return `${item.product_name} (x${item.quantity})${serialSuffix}`;
+          }).join(', ');
+
+        } catch (e) {
+          console.error(`Failed to fetch details for sale ${s.id}:`, e);
+        }
+
+        return {
           id: s.sale_number,
           saleId: s.id,
           customerName: s.customer_name,
           orderDate: new Date(s.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }),
-          productList: 'See details',
+          productList: productListString, 
+          items: items,
           paymentStatus: s.payment_status,
           paymentMethod: s.payment,
           orderStatus: s.status === 'Pending' ? 'Processing' : (s.status === 'Processing' ? 'Out for delivery' : s.status),
           address: s.address || '',
           contact: s.contact || '',
           deliveryProof: s.delivery_proof || null
-        }));
-        if (mounted) setOrders(mapped);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => mounted && setLoading(false));
+        };
+      });
+
+      const mapped = await Promise.all(mappedPromises);
+      return mapped;
+
+    } catch (e) {
+      setError(e.message);
+      return [];
+    }
+  }
+  // --- END FETCH ORDERS FUNCTION ---
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    fetchOrders().then(mapped => {
+      if (mounted) setOrders(mapped);
+    }).finally(() => mounted && setLoading(false));
     return () => { mounted = false; };
   }, []);
 
@@ -106,25 +155,8 @@ const DeliveryPortal = () => {
       // Update status to Completed
       await salesAPI.updateSale(selectedOrder.saleId, { status: 'Completed' });
       
-      // Refresh orders to get updated data with delivery proof
-      const list = await salesAPI.getSales({ status: 'Processing' });
-      const filtered = (list || []).filter(s => {
-        const addr = (s.address || '').toLowerCase();
-        return addr.includes('pampanga') || addr.includes('bulacan') || addr.includes('manila');
-      });
-      const mapped = filtered.map(s => ({
-        id: s.sale_number,
-        saleId: s.id,
-        customerName: s.customer_name,
-        orderDate: new Date(s.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }),
-        productList: 'See details',
-        paymentStatus: s.payment_status,
-        paymentMethod: s.payment,
-        orderStatus: s.status === 'Pending' ? 'Processing' : (s.status === 'Processing' ? 'Out for delivery' : s.status),
-        address: s.address || '',
-        contact: s.contact || '',
-        deliveryProof: s.delivery_proof || null
-      }));
+      // Refresh orders by calling the reusable fetchOrders function
+      const mapped = await fetchOrders(); 
       setOrders(mapped);
       
       setDeliveryProof(null);
@@ -173,6 +205,7 @@ const DeliveryPortal = () => {
 
   return (
     <div className="delivery-portal">
+      {/* Navigation Bar */}
       <nav className="delivery-navbar">
         <div className="navbar-left">
           <img src={tcjLogo} alt="TJC Logo" className="navbar-logo" />
@@ -334,7 +367,46 @@ const DeliveryPortal = () => {
               <div className="detail-row"><span className="detail-label">Contact Number:</span><span className="detail-value">{selectedOrder.contact}</span></div>
               <div className="detail-row"><span className="detail-label">Delivery Address:</span><span className="detail-value">{selectedOrder.address}</span></div>
               <div className="detail-row"><span className="detail-label">Order Date:</span><span className="detail-value">{selectedOrder.orderDate}</span></div>
-              <div className="detail-row"><span className="detail-label">Product List:</span><span className="detail-value">{selectedOrder.productList}</span></div>
+
+              {/* Products Table (Organized) */}
+              <div className="detail-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                <span className="detail-label" style={{ marginBottom: '8px' }}>Products:</span>
+                <div style={{ width: '100%', overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8f9fa' }}>
+                        <th style={{ textAlign: 'left', padding: '8px 4px', borderBottom: '1px solid #ddd' }}>Product</th>
+                        <th style={{ textAlign: 'left', padding: '8px 4px', borderBottom: '1px solid #ddd' }}>Serial Numbers</th>
+                        <th style={{ textAlign: 'right', padding: '8px 4px', borderBottom: '1px solid #ddd' }}>Qty</th>
+                        <th style={{ textAlign: 'right', padding: '8px 4px', borderBottom: '1px solid #ddd' }}>Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedOrder.items?.length > 0 ? (
+                        selectedOrder.items.map((item, index) => (
+                          <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
+                            <td style={{ padding: '8px 4px', textAlign: 'left' }}>
+                              {item.product_name || item.name}
+                            </td>
+                            <td style={{ padding: '8px 4px', textAlign: 'left', wordBreak: 'break-word', maxWidth: '200px' }}>
+                              {(item.serial_numbers?.length > 0) 
+                                ? item.serial_numbers.join(', ') 
+                                : 'N/A'}
+                            </td>
+                            <td style={{ padding: '8px 4px', textAlign: 'right' }}>{item.quantity}</td>
+                            <td style={{ padding: '8px 4px', textAlign: 'right' }}>
+                              ₱{(Number(item.price) * Number(item.quantity)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr><td colSpan="4" style={{ textAlign: 'center', padding: '10px' }}>No items found for this order.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               <div className="detail-row">
                 <span className="detail-label">Payment Status:</span>
                 <span className={`status-badge ${getPaymentStatusClass(selectedOrder.paymentStatus)}`}>
