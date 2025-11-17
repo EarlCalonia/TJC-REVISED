@@ -231,7 +231,8 @@ const OrdersPage = () => {
       if (response.success) {
         // Manually calculate pending and paid as the API doesn't provide them
         const allSales = await salesAPI.getSales();
-        const pending = allSales.filter(o => o.status === 'Processing').length;
+        // Count both 'Pending' and 'Processing' statuses
+        const pending = allSales.filter(o => o.status === 'Pending' || o.status === 'Processing').length;
         const paid = allSales.filter(o => o.payment_status === 'Paid').length;
         
         setStats({
