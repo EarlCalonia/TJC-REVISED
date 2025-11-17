@@ -17,19 +17,9 @@ const loadImageAsDataURL = async (url) => {
   }
 };
 
-// Convert ArrayBuffer to base64
-const bufferToBase64 = (buffer) => {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-};
-
 // Utility function to format currency
 const formatCurrency = (amount) => {
   const num = Number(amount) || 0;
-  // Use 'PHP ' for reliability in PDF
   return `PHP ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
@@ -49,24 +39,19 @@ const formatPeriodText = (startDate, endDate, rangeLabel) => {
   const end = new Date(endDate);
   
   if (rangeLabel === 'Weekly') {
-    // Check if dates span different months
     if (start.getMonth() !== end.getMonth()) {
-      // Format: Nov 28 - Dec 4, 2025
       const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
       const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
       const year = end.getFullYear();
       return `${startMonth} ${start.getDate()} - ${endMonth} ${end.getDate()}, ${year}`;
     } else {
-      // Format: Nov 1–7, 2025 (same month)
       const monthName = start.toLocaleDateString('en-US', { month: 'short' });
       const year = start.getFullYear();
       return `${monthName} ${start.getDate()}–${end.getDate()}, ${year}`;
     }
   } else if (rangeLabel === 'Monthly') {
-    // Format: November 2025
     return start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   } else {
-    // Daily or custom range: November 1, 2025 - November 3, 2025
     return `${formatDate(startDate)} - ${formatDate(endDate)}`;
   }
 };
@@ -76,47 +61,37 @@ export const generateSalesReportPDF = async (salesData, startDate, endDate, admi
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const centerX = pageWidth / 2;
+  let yPosition = 20;
 
   const logoDataUrl = await loadImageAsDataURL(logoUrl);
 
-  // Header section - centered
-  // Header with logo and titles
-if (logoDataUrl) {
-  const pageWidth = doc.internal.pageSize.getWidth(); // page width
-  const imgWidth = 30; // image width
-  const imgHeight = 22; // image height
-  const x = (pageWidth - imgWidth) / 2; // center horizontally
-  const y = 12; // top margin
-  doc.addImage(logoDataUrl, 'PNG', x, y, imgWidth, imgHeight);
+  // === Header Section ===
+  if (logoDataUrl) {
+    const imgWidth = 30; 
+    const imgHeight = 22; 
+    const x = (pageWidth - imgWidth) / 2;
+    doc.addImage(logoDataUrl, 'PNG', x, yPosition, imgWidth, imgHeight);
+    yPosition += imgHeight + 5;
+  }
 
-  const centerX = pageWidth / 2;
-
-  // Title
-  const titleY = y + imgHeight + 5; // 5 = space below image
-  doc.setFontSize(14);
+  doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
-  doc.text('Sales Report', centerX, titleY, { align: 'center' });
+  doc.text('Sales Report', centerX, yPosition, { align: 'center' });
+  yPosition += 7;
 
-  // Date / period
-  const dateY = titleY + 7; // 7 = space below title
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Period: ${formatPeriodText(startDate, endDate, rangeLabel)}`, centerX, dateY, { align: 'center' });
-}
+  doc.text(`Period: ${formatPeriodText(startDate, endDate, rangeLabel)}`, centerX, yPosition, { align: 'center' });
+  yPosition += 10;
 
-  // API already filtered the data by date, so we just use what was given.
   const filteredOrders = salesData || [];
-
-  // REVISION: Define statuses to include (matching backend)
   const allowedStatuses = ['Completed', 'Partially Returned', 'Pending', null];
 
-  // Flatten the filtered data for table display
   const flattenedData = filteredOrders.flatMap(order =>
-    // REVISION: Use the allowedStatuses array
     order.items.filter(item => allowedStatuses.includes(order.status)).map(item => ({
       orderId: order.orderId,
       customerName: order.customerName,
-      orderDate: formatDate(order.orderDate), // Format the date
+      orderDate: formatDate(order.orderDate),
       productName: item.productName,
       quantity: Number(item.quantity) || 0,
       unitPrice: Number(item.unitPrice) || 0,
@@ -124,62 +99,54 @@ if (logoDataUrl) {
     }))
   );
 
-  let yPosition = 50;
-
-  // Draw separator line
-  doc.line(20, yPosition, 190, yPosition);
-  yPosition += 10;
-
-  // Table headers
-  doc.setFontSize(8);
+  // === Table Headers ===
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
 
   const colPositions = {
-    date: 25,
+    date: 15,
     productName: 50,
     quantity: 110,
-    unitPrice: 125,
-    totalSales: 150
+    unitPrice: 130,
+    totalSales: 160
   };
 
-  doc.text('Date', colPositions.date, yPosition);
-  doc.text('Product Name', colPositions.productName, yPosition);
-  doc.text('Qty', colPositions.quantity, yPosition);
-  doc.text('Unit Price', colPositions.unitPrice, yPosition);
-  doc.text('Total', colPositions.totalSales, yPosition);
+  const drawTableHeaders = (y) => {
+    doc.setFont('helvetica', 'bold');
+    doc.text('Date', colPositions.date, y);
+    doc.text('Product Name', colPositions.productName, y);
+    doc.text('Qty', colPositions.quantity, y);
+    doc.text('Unit Price', colPositions.unitPrice, y);
+    doc.text('Total', colPositions.totalSales, y);
+    doc.setLineWidth(0.5);
+    doc.line(15, y + 3, pageWidth - 15, y + 3);
+  };
 
+  drawTableHeaders(yPosition);
   yPosition += 8;
 
-  // Draw table header line
-  doc.line(20, yPosition, 190, yPosition);
-  yPosition += 5;
-
-  // Table data
+  // === Table Data ===
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
+  doc.setFontSize(8);
 
   let grandTotal = 0;
 
   flattenedData.forEach((item, index) => {
-    if (yPosition > 250) {
+    // Page break check for rows (Footer is at ~280mm)
+    // We stop at 270 to leave breathing room
+    if (yPosition > 270) {
       doc.addPage();
-      yPosition = 30;
-
-      // Repeat headers on new page
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Date', colPositions.date, yPosition);
-      doc.text('Product Name', colPositions.productName, yPosition);
-      doc.text('Qty', colPositions.quantity, yPosition);
-      doc.text('Unit Price', colPositions.unitPrice, yPosition);
-      doc.text('Total', colPositions.totalSales, yPosition);
-
+      yPosition = 20;
+      drawTableHeaders(yPosition);
       yPosition += 8;
-      doc.line(20, yPosition, 190, yPosition);
-      yPosition += 5;
-
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
+      doc.setFontSize(8);
+    }
+
+    // Alternating row color
+    if (index % 2 === 0) {
+      doc.setFillColor(245, 245, 245);
+      doc.rect(15, yPosition - 4, pageWidth - 30, 6, 'F');
     }
 
     const maxProductNameLength = 30;
@@ -187,6 +154,7 @@ if (logoDataUrl) {
       ? item.productName.substring(0, maxProductNameLength) + '...'
       : item.productName;
 
+    doc.setTextColor(0, 0, 0);
     doc.text(item.orderDate, colPositions.date, yPosition);
     doc.text(productName, colPositions.productName, yPosition);
     doc.text((Number(item.quantity) || 0).toString(), colPositions.quantity, yPosition);
@@ -197,90 +165,220 @@ if (logoDataUrl) {
     yPosition += 6;
   });
 
-  // Draw line below table
-  yPosition += 5;
-  doc.line(20, yPosition, 190, yPosition);
-  yPosition += 10;
+  // === Grand Total ===
+  // Check space for Grand Total (needs ~15mm)
+  if (yPosition > 265) {
+    doc.addPage();
+    yPosition = 20;
+  }
 
-  // Grand Total row
+  yPosition += 2;
+  doc.setLineWidth(0.5);
+  doc.line(15, yPosition, pageWidth - 15, yPosition);
+  yPosition += 6;
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('Grand Total:', 120, yPosition);
-  doc.text(formatCurrency(grandTotal), 150, yPosition);
-  yPosition += 10;
+  doc.setFontSize(9);
+  doc.text('Grand Total:', 130, yPosition);
+  doc.text(formatCurrency(grandTotal), 160, yPosition);
+  yPosition += 10; // Add space before summary
 
-  // Draw line below grand total
-  doc.line(20, yPosition, 190, yPosition);
-  yPosition += 15;
-
-  // Calculate summary data
-  // REVISION: Update summary to use the same logic
-  const relevantOrders = filteredOrders.filter(order => 
-      allowedStatuses.includes(order.status)
-  );
-  
+  // === Sales Summary ===
+  // Calculate Summary Data
+  const relevantOrders = filteredOrders.filter(order => allowedStatuses.includes(order.status));
   const totalRevenue = relevantOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
-  const totalItems = flattenedData.reduce((sum, item) => sum + item.quantity, 0); // Use flattened data
+  const totalItems = flattenedData.reduce((sum, item) => sum + item.quantity, 0);
   const totalTransactions = relevantOrders.length;
   const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
-  // Find best selling product from the flattened (and filtered) data
   const productCounts = {};
   flattenedData.forEach(item => {
     productCounts[item.productName] = (productCounts[item.productName] || 0) + item.quantity;
   });
-  
-  const bestSellingProduct = Object.keys(productCounts).reduce((a, b) =>
-    productCounts[a] > productCounts[b] ? a : b, 'N/A');
+  const bestSellingProduct = Object.keys(productCounts).reduce((a, b) => productCounts[a] > productCounts[b] ? a : b, 'N/A');
 
-  // Summary section
+  // Estimate Summary Height: ~35mm needed
+  // If current position + 35mm exceeds footer start (280mm), start new page
+  if (yPosition + 35 > 280) {
+    doc.addPage();
+    yPosition = 30;
+  }
+
+  // Summary Header
+  doc.setFillColor(240, 240, 240);
+  doc.rect(15, yPosition - 5, pageWidth - 30, 8, 'F'); // Header background
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.text('Sales Summary', centerX, yPosition, { align: 'center' });
-  yPosition += 12;
+  yPosition += 8;
+
+  // Summary Content
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+
+  // Row 1
+  doc.text(`Total Revenue: ${formatCurrency(totalRevenue)}`, 20, yPosition);
+  doc.text(`Avg Transaction Value: ${formatCurrency(avgTransactionValue)}`, pageWidth / 2 + 10, yPosition);
+  yPosition += 6;
+
+  // Row 2
+  doc.text(`Total Items Sold: ${totalItems}`, 20, yPosition);
+  doc.text(`Best Selling Product: ${bestSellingProduct}`, pageWidth / 2 + 10, yPosition);
+  yPosition += 6;
+
+  // Row 3
+  doc.text(`Total Transactions: ${totalTransactions}`, 20, yPosition);
+  
+  // === Footer ===
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100);
+    
+    const footerY = 285;
+    doc.text(`Generated by: ${adminName}`, 15, footerY);
+    doc.text(`Report Generated: ${formatDate(new Date().toISOString().split('T')[0])}`, 15, footerY + 4);
+    doc.text(`Page ${i} of ${pageCount}`, pageWidth - 15, footerY, { align: 'right' });
+  }
+
+  return doc;
+};
+
+// Generate Inventory Report PDF (Kept as is for consistency reference)
+export const generateInventoryReportPDF = async (inventoryData, startDate, endDate, adminName) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  let yPosition = 20;
+
+  try {
+    const logoDataUrl = await loadImageAsDataURL(logoUrl);
+    const imgWidth = 30;
+    const imgHeight = 22;
+    const x = (pageWidth - imgWidth) / 2;
+    doc.addImage(logoDataUrl, 'PNG', x, yPosition, imgWidth, imgHeight);
+    yPosition += imgHeight + 5;
+  } catch (error) {
+    console.warn('Could not load logo:', error);
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text('Inventory Report', pageWidth / 2, yPosition, { align: 'center' });
+  yPosition += 7;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Period: ${formatDate(startDate)} - ${formatDate(endDate)}`, pageWidth / 2, yPosition, { align: 'center' });
+  yPosition += 10;
+
+  const colPositions = {
+    productName: 20,
+    category: 70,
+    brand: 110,
+    quantity: 150,
+    status: 175
+  };
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('Product Name', colPositions.productName, yPosition);
+  doc.text('Category', colPositions.category, yPosition);
+  doc.text('Brand', colPositions.brand, yPosition);
+  doc.text('Remaining Qty', colPositions.quantity, yPosition);
+  doc.text('Status', colPositions.status, yPosition);
+  yPosition += 3;
+
+  doc.setLineWidth(0.5);
+  doc.line(15, yPosition, pageWidth - 15, yPosition);
+  yPosition += 5;
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
 
-  // First row: Total Revenue and Average transaction value
-  doc.text(`Total Revenue: ${formatCurrency(totalRevenue)}`, 25, yPosition);
-  const avgText = `Average transaction value: ${formatCurrency(avgTransactionValue)}`;
-  doc.text(avgText, centerX + 20, yPosition, { align: 'left' });
+  inventoryData.forEach((item, index) => {
+    if (yPosition > 270) { // Consistent threshold
+      doc.addPage();
+      yPosition = 20;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Product Name', colPositions.productName, yPosition);
+      doc.text('Category', colPositions.category, yPosition);
+      doc.text('Brand', colPositions.brand, yPosition);
+      doc.text('Remaining Qty', colPositions.quantity, yPosition);
+      doc.text('Status', colPositions.status, yPosition);
+      yPosition += 3;
+      doc.line(15, yPosition, pageWidth - 15, yPosition);
+      yPosition += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+    }
+
+    if (index % 2 === 0) {
+      doc.setFillColor(245, 245, 245);
+      doc.rect(15, yPosition - 4, pageWidth - 30, 6, 'F');
+    }
+
+    const maxProductNameLength = 35;
+    const productName = item.productName.length > maxProductNameLength
+      ? item.productName.substring(0, maxProductNameLength) + '...'
+      : item.productName;
+
+    doc.setTextColor(0, 0, 0);
+    doc.text(productName, colPositions.productName, yPosition);
+    doc.text(item.category, colPositions.category, yPosition);
+    doc.text(item.brand, colPositions.brand, yPosition);
+    doc.text(item.currentStock.toString(), colPositions.quantity, yPosition);
+    doc.text(item.stockStatus, colPositions.status, yPosition);
+
+    yPosition += 6;
+  });
+
+  yPosition += 5;
+  doc.line(15, yPosition, pageWidth - 15, yPosition);
+  yPosition += 10;
+
+  const totalItems = inventoryData.length;
+  const lowStockItems = inventoryData.filter(item => item.stockStatus === 'Low Stock').length;
+  const totalRemaining = inventoryData.reduce((sum, item) => sum + item.currentStock, 0);
+
+  if (yPosition + 30 > 280) {
+    doc.addPage();
+    yPosition = 30;
+  }
+
+  doc.setFillColor(240, 240, 240);
+  doc.rect(15, yPosition - 5, pageWidth - 30, 8, 'F');
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Inventory Summary', 20, yPosition);
   yPosition += 8;
 
-  // Second row: Total Items sold and Best selling product
-  doc.text(`Total Items sold: ${totalItems}`, 25, yPosition);
-  doc.text(`Best selling product: ${bestSellingProduct}`, centerX + 20, yPosition, { align: 'left' });
-  yPosition += 8;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Total Items: ${totalItems}`, 20, yPosition);
+  yPosition += 6;
+  doc.text(`Low Stock Items: ${lowStockItems}`, 20, yPosition);
+  yPosition += 6;
+  doc.text(`Total Remaining: ${totalRemaining}`, 20, yPosition);
 
-  // Third row: Number of transactions
-  doc.text(`Number of transactions: ${totalTransactions}`, 25, yPosition);
-  yPosition += 15;
-
-  // Draw line below summary
-  doc.line(20, yPosition, 190, yPosition);
-  yPosition += 15;
-
-  // Footer
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-
-    // Generated by and Report Generated on same line
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generated by: ${adminName}`, 25, 280);
-    doc.text(`Report Generated: ${formatDate(new Date().toISOString().split('T')[0])}`, 120, 280);
-
-    // Page _ of _ centered
-    doc.text(`Page ${i} of ${pageCount}`, centerX, 285, { align: 'center' });
+    doc.setTextColor(100);
+    const footerY = 285;
+    doc.text(`Generated by: ${adminName}`, 15, footerY);
+    doc.text(`Report Generated: ${formatDate(new Date().toISOString().split('T')[0])}`, 15, footerY + 4);
+    doc.text(`Page ${i} of ${pageCount}`, pageWidth - 15, footerY, { align: 'right' });
   }
 
   return doc;
 };
 
 
-// --- STANDARD RECEIPT FUNCTION (WITH LAYOUT FIX) ---
+// --- STANDARD RECEIPT FUNCTION ---
 export const generateSaleReceipt = async ({
   saleNumber,
   customerName,
@@ -304,8 +402,6 @@ export const generateSaleReceipt = async ({
   const LINE_HEIGHT = 1.2 * FONT_SIZE_BODY;
   const SMALL_LINE_HEIGHT = 1.2 * FONT_SIZE_SMALL;
 
-
-  // Use 'PHP ' for reliability
   const peso = (n) => {
     const v = Number(n) || 0;
     const sym = 'PHP ';
@@ -314,11 +410,10 @@ export const generateSaleReceipt = async ({
   
   const logoDataUrl = await loadImageAsDataURL(logoUrl);
   
-  // === 1. HEADER (CENTERED) ===
   if (logoDataUrl) {
     const imgWidth = 80;
     const imgHeight = 59;
-    const x = (pageWidth - imgWidth) / 2; // Center the logo
+    const x = (pageWidth - imgWidth) / 2; 
     doc.addImage(logoDataUrl, 'PNG', x, y, imgWidth, imgHeight);
     y += imgHeight + 10;
   }
@@ -335,7 +430,6 @@ export const generateSaleReceipt = async ({
   doc.text('0912 345 6789 | tjcautosupply@gmail.com', pageWidth / 2, y, { align: 'center' });
   y += 25;
 
-  // === 2. RECEIPT TITLE & DETAILS (PANEL LAYOUT) ===
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
   doc.text('OFFICIAL RECEIPT', pageWidth / 2, y, { align: 'center' });
@@ -348,11 +442,9 @@ export const generateSaleReceipt = async ({
   const adminName = localStorage.getItem('username') || 'Admin';
   const dateStr = new Date(createdAt).toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
 
-  // Draw details in two columns
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT_SIZE_BODY);
   
-  // Column 1
   let y1 = y;
   doc.text(`Order #:`, panel1_X, y1);
   doc.text(`Customer:`, panel1_X, y1 + LINE_HEIGHT);
@@ -361,11 +453,9 @@ export const generateSaleReceipt = async ({
   doc.setFont('helvetica', 'bold');
   doc.text(`${saleNumber}`, panel1_X + 70, y1);
   doc.text(`${customerName || 'N/A'}`, panel1_X + 70, y1 + LINE_HEIGHT);
-  // Wrap address if it's long
   const addressLines = doc.splitTextToSize(address || (shippingOption === 'In-Store Pickup' ? 'In-Store Pickup' : 'N/A'), panelWidth - 70);
   doc.text(addressLines, panel1_X + 70, y1 + (LINE_HEIGHT * 2));
   
-  // Column 2
   let y2 = y;
   doc.setFont('helvetica', 'normal');
   doc.text(`Date:`, panel2_X, y2);
@@ -377,26 +467,19 @@ export const generateSaleReceipt = async ({
   doc.text(`${adminName}`, panel2_X + 80, y2 + LINE_HEIGHT);
   doc.text(`${paymentMethod}`, panel2_X + 80, y2 + (LINE_HEIGHT * 2));
 
-  // Adjust 'y' to the bottom of the tallest panel
   y = Math.max(y1 + ((addressLines.length + 1) * LINE_HEIGHT), y2 + (LINE_HEIGHT * 3)) + 20;
 
-  // === 3. ITEMS TABLE ===
   const tableHeaderY = y;
+  const colAmt_Right = pageWidth - margin - 5;        
+  const colUnit_Right = colAmt_Right - 90;          
+  const colQty_Center = colUnit_Right - 45;         
+  const colName_Left = margin + 5;                  
+  const colName_Width = colQty_Center - 25 - colName_Left; 
   
-  // --- THIS IS THE FIX ---
-  // Redefine column X positions to give more space
-  const colAmt_Right = pageWidth - margin - 5;        // Right edge of Amount
-  const colUnit_Right = colAmt_Right - 90;          // Right edge of Unit Price (90pt wide)
-  const colQty_Center = colUnit_Right - 45;         // Center of Qty (45pt from Unit Price)
-  const colName_Left = margin + 5;                  // Left edge of Item
-  const colName_Width = colQty_Center - 25 - colName_Left; // Width of Item column
-  // --- END OF FIX ---
-  
-  const minRowHeight = 25; // Minimum height for a row
+  const minRowHeight = 25;
 
-  // Table Header
-  doc.setFillColor(241, 243, 245); // Set fill to light gray (like the report)
-  doc.rect(margin, tableHeaderY, contentWidth, 20, 'F'); // Draw the header rectangle
+  doc.setFillColor(241, 243, 245); 
+  doc.rect(margin, tableHeaderY, contentWidth, 20, 'F'); 
   
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT_SIZE_BODY);
@@ -407,42 +490,35 @@ export const generateSaleReceipt = async ({
 
   y = tableHeaderY + 20;
 
-  // Table Rows
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT_SIZE_BODY);
   
   items.forEach((it, index) => {
-    // Check for page break
     if (y > 750) { 
       doc.addPage();
       y = margin;
-      //... (Repeat table header logic if needed) ...
     }
 
     const name = String(it.name || it.product_name || it.productName || '');
     const nameLines = doc.splitTextToSize(name, colName_Width);
     
-    // Check for serial numbers
     const serials = it.serialNumbers || it.serial_numbers || [];
     let serialLines = [];
     if (serials.length > 0) {
       const serialString = "Serials: " + serials.join(', ');
-      // Indent serial numbers slightly
       serialLines = doc.splitTextToSize(serialString, colName_Width - 5); 
     }
     
-    // Calculate row height based on wrapped text for BOTH name and serials
     const nameHeight = nameLines.length * LINE_HEIGHT;
     const serialHeight = serialLines.length * SMALL_LINE_HEIGHT;
-    const rowHeight = Math.max(minRowHeight, nameHeight + serialHeight + 10); // +10 for padding
+    const rowHeight = Math.max(minRowHeight, nameHeight + serialHeight + 10); 
     
-    const yTextStart = y + 16; // Vertical position for text (16pt from top of row)
+    const yTextStart = y + 16;
 
     const qty = Number(it.quantity || 0);
     const unit = Number(it.price || it.unitPrice || 0);
     const sub = unit * qty;
     
-    // Draw text
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT_SIZE_BODY);
     doc.text(nameLines, colName_Left, yTextStart);
@@ -450,31 +526,26 @@ export const generateSaleReceipt = async ({
     if (serialLines.length > 0) {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(FONT_SIZE_SMALL);
-      doc.text(serialLines, colName_Left + 5, yTextStart + nameHeight); // Place below the name
+      doc.text(serialLines, colName_Left + 5, yTextStart + nameHeight); 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT_SIZE_BODY);
     }
 
-    // Draw the rest of the row, aligned with the top text
     doc.text(String(qty), colQty_Center, yTextStart, { align: 'center' });
     doc.text(peso(unit), colUnit_Right, yTextStart, { align: 'right' });
     doc.text(peso(sub), colAmt_Right, yTextStart, { align: 'right' });
 
-    // Draw lines for the row
     doc.setLineWidth(0.5);
-    doc.setDrawColor(222, 226, 230); // Light gray border
-    doc.line(margin, y + rowHeight, pageWidth - margin, y + rowHeight); // Horizontal line
+    doc.setDrawColor(222, 226, 230); 
+    doc.line(margin, y + rowHeight, pageWidth - margin, y + rowHeight); 
 
-    y += rowHeight; // Move y by the calculated row height
+    y += rowHeight; 
   });
   
-  
-  // === 4. TOTALS SECTION ===
   y += 15;
-  const totalLabelX = contentWidth - 100; // Right-align point for labels
-  const totalValueX = pageWidth - margin - 5; // Right-align point for values
+  const totalLabelX = contentWidth - 100; 
+  const totalValueX = pageWidth - margin - 5; 
 
-  // Subtotal
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT_SIZE_BODY);
   doc.text('Subtotal:', totalLabelX, y, { align: 'right' });
@@ -488,163 +559,19 @@ export const generateSaleReceipt = async ({
     
     doc.text('Change:', totalLabelX, y, { align: 'right' });
     doc.text(peso(changeAmount), totalValueX, y, { align: 'right' });
-    y += (LINE_HEIGHT * 1.5); // Extra space before total
+    y += (LINE_HEIGHT * 1.5); 
   }
 
-  // Grand Total
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT_SIZE_HEADER + 2); // Make total bigger
+  doc.setFontSize(FONT_SIZE_HEADER + 2); 
   doc.text('TOTAL:', totalLabelX, y, { align: 'right' });
   doc.text(peso(totalAmount), totalValueX, y, { align: 'right' });
   y += (LINE_HEIGHT * 2);
 
-  // === 5. FOOTER ===
-  y = Math.max(y, 800); // Push footer to bottom
+  y = Math.max(y, 800); 
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(FONT_SIZE_BODY);
   doc.text('Thank you for your purchase!', pageWidth / 2, y, { align: 'center' });
-
-  return doc;
-};
-
-
-// Generate Inventory Report PDF
-export const generateInventoryReportPDF = async (inventoryData, startDate, endDate, adminName) => {
-  const doc = new jsPDF();
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  let yPosition = 20;
-
-  // Header: Logo + Title + Period
-  try {
-    const logoDataUrl = await loadImageAsDataURL(logoUrl);// replace with your logo loading function
-    const imgWidth = 30;
-    const imgHeight = 22;
-    const x = (pageWidth - imgWidth) / 2;
-    doc.addImage(logoDataUrl, 'PNG', x, yPosition, imgWidth, imgHeight);
-    yPosition += imgHeight + 5;
-  } catch (error) {
-    console.warn('Could not load logo:', error);
-  }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('Inventory Report', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 7;
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  // REVISION: Use the provided date range for the inventory report title
-  doc.text(`Period: ${formatDate(startDate)} - ${formatDate(endDate)}`, pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 10;
-
-  // Table headers
-  const colPositions = {
-    productName: 20,
-    category: 70,
-    brand: 110,
-    quantity: 150,
-    status: 175
-  };
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('Product Name', colPositions.productName, yPosition);
-  doc.text('Category', colPositions.category, yPosition);
-  doc.text('Brand', colPositions.brand, yPosition);
-  doc.text('Remaining Qty', colPositions.quantity, yPosition);
-  doc.text('Status', colPositions.status, yPosition);
-  yPosition += 3;
-
-  // Header line
-  doc.setLineWidth(0.5);
-  doc.line(15, yPosition, pageWidth - 15, yPosition);
-  yPosition += 5;
-
-  // Table rows
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-
-  inventoryData.forEach((item, index) => {
-    // Check for new page
-    if (yPosition > 250) {
-      doc.addPage();
-      yPosition = 20;
-
-      // Repeat headers
-      doc.setFont('helvetica', 'bold');
-      doc.text('Product Name', colPositions.productName, yPosition);
-      doc.text('Category', colPositions.category, yPosition);
-      doc.text('Brand', colPositions.brand, yPosition);
-      doc.text('Remaining Qty', colPositions.quantity, yPosition);
-      doc.text('Status', colPositions.status, yPosition);
-      yPosition += 3;
-      doc.line(15, yPosition, pageWidth - 15, yPosition);
-      yPosition += 5;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-    }
-
-    // Optional: alternating row color
-    if (index % 2 === 0) {
-      doc.setFillColor(240, 240, 240); // light gray
-      doc.rect(15, yPosition - 4, pageWidth - 30, 6, 'F');
-    }
-
-    const maxProductNameLength = 35;
-    const productName = item.productName.length > maxProductNameLength
-      ? item.productName.substring(0, maxProductNameLength) + '...'
-      : item.productName;
-
-    doc.setTextColor(0, 0, 0);
-    doc.text(productName, colPositions.productName, yPosition);
-    doc.text(item.category, colPositions.category, yPosition);
-    doc.text(item.brand, colPositions.brand, yPosition);
-    doc.text(item.currentStock.toString(), colPositions.quantity, yPosition);
-    doc.text(item.stockStatus, colPositions.status, yPosition);
-
-    yPosition += 6;
-  });
-
-  yPosition += 5;
-  doc.line(15, yPosition, pageWidth - 15, yPosition);
-  yPosition += 10;
-
-  // Summary
-  const totalItems = inventoryData.length;
-  const lowStockItems = inventoryData.filter(item => item.stockStatus === 'Low Stock').length;
-  const totalRemaining = inventoryData.reduce((sum, item) => sum + item.currentStock, 0);
-
-  if (yPosition > 200) {
-    doc.addPage();
-    yPosition = 30;
-  }
-
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Inventory Summary', 20, yPosition);
-  yPosition += 8;
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Total Items: ${totalItems}`, 20, yPosition);
-  yPosition += 6;
-  doc.text(`Low Stock Items: ${lowStockItems}`, 20, yPosition);
-  yPosition += 6;
-  doc.text(`Total Remaining: ${totalRemaining}`, 20, yPosition);
-
-  // Footer
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Generated by: ${adminName}`, 15, 285);
-    doc.text(`Report Generated: ${formatDate(new Date().toISOString().split('T')[0])}`, 15, 290);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth - 15, 290, { align: 'right' });
-  }
-
- 
 
   return doc;
 };
