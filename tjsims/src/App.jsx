@@ -5,12 +5,10 @@ import RecoveryPage from './pages/RecoveryPage';
 import LandingPage from './pages/client/LandingPage';
 import ContactUs from './pages/client/ContactUs';
 import Products from './pages/client/Products';
-import ProductDetails from './pages/client/ProductDetails';
 import OrderStatus from './pages/client/OrderStatus';
 import DashboardPage from './pages/admin/DashboardPage';
 import SalesPage from './pages/admin/SalesPage';
 import InventoryPage from './pages/admin/InventoryPage';
-// REVISION: Import the original file name
 import OrdersPage from './pages/admin/OrdersPage';
 import ReportsPage from './pages/admin/ReportsPage';
 import ProductPage from './pages/admin/ProductPage';
@@ -39,12 +37,15 @@ const App = () => {
     <Router>
       <Routes>
         {/* Client Routes */}
-        <Route path="/" element={<Products />} />
+        {/* CHANGE: Redirect root "/" to "/products" immediately */}
+        <Route path="/" element={<Navigate to="/products" replace />} />
+        
+        {/* Landing page accessible via /home if needed, or you can remove this */}
+        <Route path="/home" element={<LandingPage />} />
+        
         <Route path="/products" element={<Products />} />
-        <Route path="/products/:id" element={<ProductDetails />} />
         <Route path="/order-status" element={<OrderStatus />} />
         <Route path="/contact-us" element={<ContactUs />} />
-        <Route path="/home" element={<LandingPage />} /> {/* Kept for reference */}
         
         {/* Admin Routes */}
         <Route path="/admin/login" element={<LoginPage />} />
@@ -65,7 +66,6 @@ const App = () => {
             </PrivateRoute>
           } 
         />
-        {/* REVISION: Use the original path and element */}
         <Route 
           path="/admin/orders" 
           element={
@@ -122,6 +122,9 @@ const App = () => {
             </PrivateRoute>
           } 
         />
+        
+        {/* Catch-all: Redirect any unknown routes to Products */}
+        <Route path="*" element={<Navigate to="/products" replace />} />
       </Routes>
     </Router>
   );

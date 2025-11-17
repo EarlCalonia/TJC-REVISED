@@ -12,7 +12,7 @@ const Products = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState(null); // For Modal
+  const [selectedProduct, setSelectedProduct] = useState(null); // State for the modal
 
   const search = searchParams.get('q') || '';
   const category = searchParams.get('category') || '';
@@ -34,7 +34,6 @@ const Products = () => {
           status: p.status,
           image: p.image,
           stock: p.stock ?? p.currentStock ?? 0,
-          // Ensure we capture these fields for the modal
           description: p.description,
           vehicle_compatibility: p.vehicle_compatibility
         }));
@@ -69,12 +68,12 @@ const Products = () => {
 
   const openModal = (product) => {
     setSelectedProduct(product);
-    document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    document.body.style.overflow = 'hidden'; // Disable scrolling background
   };
 
   const closeModal = () => {
     setSelectedProduct(null);
-    document.body.style.overflow = 'auto';
+    document.body.style.overflow = 'auto'; // Re-enable scrolling
   };
 
   return (
@@ -112,20 +111,20 @@ const Products = () => {
             return (
             <div key={p.product_id || p.id} className="product-card" style={{ opacity: isOutOfStock ? 0.8 : 1 }}>
                 <div className="product-image-wrapper">
-                <div className="stock-badge" style={{ background: isOutOfStock ? '#dc3545' : '#10b981', zIndex: 10 }}>
-                  {isOutOfStock ? 'Out of Stock' : 'In Stock'}
-                </div>
-                
-                <img 
-                    src={p.image ? (p.image.startsWith('http') ? p.image : `http://localhost:5000${p.image}`) : 'https://placehold.co/400x300?text=No+Image'} 
-                    alt={p.name} 
-                    onError={(e) => {
-                      e.currentTarget.onerror = null;
-                      e.currentTarget.src = 'https://placehold.co/400x300?text=No+Image';
-                    }}
-                    className="product-image"
-                    style={{ filter: isOutOfStock ? 'grayscale(100%)' : 'none' }}
-                />
+                  <div className="stock-badge" style={{ background: isOutOfStock ? '#dc3545' : '#10b981', zIndex: 10 }}>
+                    {isOutOfStock ? 'Out of Stock' : 'In Stock'}
+                  </div>
+                  
+                  <img 
+                      src={p.image ? (p.image.startsWith('http') ? p.image : `http://localhost:5000${p.image}`) : 'https://placehold.co/400x300?text=No+Image'} 
+                      alt={p.name} 
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = 'https://placehold.co/400x300?text=No+Image';
+                      }}
+                      className="product-image"
+                      style={{ filter: isOutOfStock ? 'grayscale(100%)' : 'none' }}
+                  />
                 </div>
                 <div className="product-info">
                     <span className="product-brand">{p.brand}</span>
@@ -134,13 +133,16 @@ const Products = () => {
                     <span className="product-label">Price</span>
                     <span className="product-price">{currency(p.price)}</span>
                     </div>
-                    {/* Changed Link to Button for Modal */}
+                    
+                    {/* BUTTON THAT OPENS MODAL */}
                     <button 
                       onClick={() => openModal(p)}
                       className="view-details-button"
+                      type="button"
                     >
                       View Details <span className="arrow">›</span>
                     </button>
+
                 </div>
             </div>
             );
