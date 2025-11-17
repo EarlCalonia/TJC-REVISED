@@ -21,20 +21,20 @@ const DeliveryPortal = () => {
   // --- START FETCH ORDERS FUNCTION ---
   const fetchOrders = async () => {
     try {
-      // 1. Fetch sales that have 'Company Delivery' type (Backend filter is applied)
+      // 1. Fetch sales that have 'Company Delivery' type
       const list = await salesAPI.getSales({ 
         delivery_type: 'Company Delivery' 
       });
       
-      // 2. Filter the raw list to keep only active delivery statuses (Pending or Processing)
+      // 2. Filter to keep only active delivery statuses
+      // FIX: Added 'Out for Delivery' to the allowed list
       const activeDeliveryList = (list || []).filter(s => 
-        s.status === 'Pending' || s.status === 'Processing'
+        s.status === 'Pending' || s.status === 'Processing' || s.status === 'Out for Delivery'
       );
 
-      // 3. Address filter (REMOVED: Using original list as primary filter)
       const filtered = activeDeliveryList;
 
-      // 4. Fetch items/serials and map
+      // 3. Fetch items/serials and map
       const mappedPromises = filtered.map(async (s) => {
         let productListString = 'See details';
         let items = [];
@@ -68,8 +68,8 @@ const DeliveryPortal = () => {
           items: items, 
           paymentStatus: s.payment_status,
           paymentMethod: s.payment,
-          // Correct Status Display Mapping:
-          orderStatus: s.status === 'Pending' ? 'Processing' : (s.status === 'Processing' ? 'Out for delivery' : s.status),
+          // FIX: Use the real status from the database directly
+          orderStatus: s.status,
           address: s.address || '',
           contact: s.contact || '',
           deliveryProof: s.delivery_proof || null
@@ -121,16 +121,13 @@ const DeliveryPortal = () => {
   const [deliveryProof, setDeliveryProof] = useState(null);
   const [uploadingProof, setUploadingProof] = useState(false);
 
-// --- MODIFIED FUNCTION START ---
   const handlePaymentStatusChange = async (orderId, newPaymentStatus) => {
     const target = orders.find(o => o.id === orderId);
     if (!target) return;
 
     try {
-      // 1. API call to update payment status in the backend
       await salesAPI.updateSale(target.saleId, { payment_status: newPaymentStatus });
       
-      // 2. Update local state upon success
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, paymentStatus: newPaymentStatus } : o));
       
       if (newPaymentStatus === 'Paid' && target.paymentMethod === 'Cash on Delivery') {
@@ -140,15 +137,14 @@ const DeliveryPortal = () => {
       alert(`Failed to update payment status: ${e.message}`);
     }
   };
-// --- MODIFIED FUNCTION END ---
 
   const handleOrderStatusChange = async (orderId, newStatus) => {
     const target = orders.find(o => o.id === orderId);
     if (!target) return;
 
-    const backendStatus = newStatus === 'Out for delivery' ? 'Processing' : newStatus;
+    // FIX: Removed the mapping logic. We send the status exactly as selected.
     try {
-      await salesAPI.updateSale(target.saleId, { status: backendStatus });
+      await salesAPI.updateSale(target.saleId, { status: newStatus });
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, orderStatus: newStatus } : o));
     } catch (e) {
       alert(`Failed to update status: ${e.message}`);
@@ -173,7 +169,7 @@ const DeliveryPortal = () => {
       // Update status to Completed
       await salesAPI.updateSale(selectedOrder.saleId, { status: 'Completed' });
       
-      // Refresh orders by calling the reusable fetchOrders function
+      // Refresh orders
       const mapped = await fetchOrders();
       setOrders(mapped);
       
@@ -217,7 +213,8 @@ const DeliveryPortal = () => {
   const getPaymentStatusClass = (status) => status === 'Paid' ? 'status-paid' : 'status-unpaid';
   const getOrderStatusClass = (status) => {
     if (status === 'Completed') return 'status-completed';
-    if (status === 'Out for delivery') return 'status-delivery';
+    // FIX: Add class for "Out for Delivery"
+    if (status === 'Out for Delivery') return 'status-delivery'; 
     return 'status-processing';
   };
 
@@ -312,8 +309,10 @@ const DeliveryPortal = () => {
                         onChange={(e) => handleOrderStatusChange(order.id, e.target.value)}
                         className={`status-edit-select status-${order.orderStatus.toLowerCase().replace(/\s+/g, '-')}`}
                       >
+                        {/* FIX: Updated options to match database values */}
+                        <option value="Pending">Pending</option>
                         <option value="Processing">Processing</option>
-                        <option value="Out for delivery">Out for delivery</option>
+                        <option value="Out for Delivery">Out for Delivery</option>
                       </select>
                     ) : (
                       <span className={`status-badge ${getOrderStatusClass(order.orderStatus)}`}>
@@ -386,7 +385,7 @@ const DeliveryPortal = () => {
               <div className="detail-row"><span className="detail-label">Delivery Address:</span><span className="detail-value">{selectedOrder.address}</span></div>
               <div className="detail-row"><span className="detail-label">Order Date:</span><span className="detail-value">{selectedOrder.orderDate}</span></div>
 
-              {/* Products Table (Organized) */}
+              {/* Products Table */}
               <div className="detail-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                 <span className="detail-label" style={{ marginBottom: '8px' }}>Products:</span>
                 <div style={{ width: '100%', overflowX: 'auto' }}>

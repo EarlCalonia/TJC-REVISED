@@ -2,7 +2,6 @@ import { Sales } from '../models/Sales.js';
 import { Return } from '../models/Return.js';
 import { getPool } from '../config/database.js';
 
-
 export class ReportsController {
   // Helper function to convert UTC to Philippine Time (UTC+8)
   static convertToPhilippineTime(utcDateString) {
@@ -79,7 +78,7 @@ export class ReportsController {
             customerName: sale.customer_name,
             contact: sale.contact,
             orderDate: ReportsController.convertToPhilippineTime(sale.created_at),
-            totalAmount: sale.total,
+            totalAmount: sale.total, // <--- Value stored as totalAmount
             paymentMethod: sale.payment,
             status: sale.status || 'N/A',
             itemCount: itemCount,
@@ -126,10 +125,11 @@ export class ReportsController {
       }
 
       // Calculate summary statistics
+      // FIX: Updated to use 'sale.totalAmount' instead of 'sale.total'
       const summary = {
         totalSales: total,
-        totalRevenue: salesWithItems.reduce((sum, sale) => sum + parseFloat(sale.total || 0), 0),
-        averageSale: salesWithItems.length > 0 ? salesWithItems.reduce((sum, sale) => sum + parseFloat(sale.total || 0), 0) / salesWithItems.length : 0,
+        totalRevenue: salesWithItems.reduce((sum, sale) => sum + parseFloat(sale.totalAmount || 0), 0),
+        averageSale: salesWithItems.length > 0 ? salesWithItems.reduce((sum, sale) => sum + parseFloat(sale.totalAmount || 0), 0) / salesWithItems.length : 0,
         totalItems: salesWithItems.reduce((sum, sale) => sum + sale.items.length, 0)
       };
 
@@ -400,249 +400,4 @@ export class ReportsController {
       });
     }
   }
-
-  // Export sales report as PDF
-  static async exportSalesReportPDF(req, res) {
-    try {
-      const { start_date, end_date } = req.query;
-
-      // Build query for all sales data (no pagination for export)
-      let query = `
-        SELECT s.*, si.product_name, si.brand, si.quantity, si.price, si.subtotal
-        FROM sales s
-        LEFT JOIN sale_items si ON s.id = si.sale_id
-        WHERE 1=1
-      `;
-      let params = [];
-
-      if (start_date) {
-        query += ' AND DATE(s.created_at) >= ?';
-        params.push(start_date);
-      }
-
-      if (end_date) {
-        query += ' AND DATE(s.created_at) <= ?';
-        params.push(end_date);
-      }
-
-      query += ' ORDER BY s.created_at DESC, si.id';
-
-      const pool = getPool();
-      const [rows] = await pool.execute(query, params);
-
-      if (rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'No sales data found for export'
-        });
-      }
-
-      // Create PDF document
-      const doc = new PDFDocument({ margin: 30, size: 'A4' });
-
-      // Set response headers for PDF download
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="sales_report_${new Date().toISOString().split('T')[0]}.pdf"`);
-
-      // Pipe PDF to response
-      doc.pipe(res);
-
-      // PDF Title
-      doc.fontSize(20).text('Sales Report', { align: 'center' });
-      doc.moveDown(2);
-
-      // Group sales by order ID for PDF formatting
-      const salesMap = new Map();
-      rows.forEach(row => {
-        if (!salesMap.has(row.id)) {
-          salesMap.set(row.id, {
-            orderId: row.sale_number,
-            customerName: row.customer_name,
-            contact: row.contact,
-            orderDate: ReportsController.convertToPhilippineTime(row.created_at),
-            totalAmount: row.total,
-            paymentMethod: row.payment,
-            items: []
-          });
-        }
-
-        if (row.product_name) {
-          salesMap.get(row.id).items.push({
-            productName: row.product_name,
-            brand: row.brand,
-            quantity: row.quantity,
-            unitPrice: row.price,
-            totalPrice: row.subtotal
-          });
-        }
-      });
-
-      let yPosition = 80;
-
-      salesMap.forEach((sale, index) => {
-        // Check if we need a new page
-        if (yPosition > 600) {
-          doc.addPage();
-          yPosition = 50;
-        }
-
-        // Sale header
-        doc.fontSize(14).text(`Order #${sale.orderId}`, 50, yPosition);
-        yPosition += 25;
-
-        doc.fontSize(10).text(`Customer: ${sale.customerName || 'N/A'}`, 50, yPosition);
-        yPosition += 18;
-        doc.fontSize(10).text(`Contact: ${sale.contact || 'N/A'}`, 50, yPosition);
-        yPosition += 18;
-        doc.fontSize(10).text(`Date: ${sale.orderDate}`, 50, yPosition);
-        yPosition += 18;
-        doc.fontSize(10).text(`Payment: ${sale.paymentMethod}`, 50, yPosition);
-        yPosition += 18;
-        doc.fontSize(10).text(`Total: ₱${parseFloat(sale.totalAmount || 0).toFixed(2)}`, 50, yPosition);
-        yPosition += 25;
-
-        // Items
-        if (sale.items.length > 0) {
-          doc.fontSize(10).text('Items:', 50, yPosition);
-          yPosition += 18;
-
-          sale.items.forEach((item) => {
-            if (yPosition > 700) {
-              doc.addPage();
-              yPosition = 50;
-            }
-
-            const itemText = `• ${item.productName} (${item.brand}) - Qty: ${item.quantity} × ₱${parseFloat(item.unitPrice || 0).toFixed(2)} = ₱${parseFloat(item.totalPrice || 0).toFixed(2)}`;
-            doc.fontSize(9).text(itemText, 60, yPosition);
-            yPosition += 15;
-          });
-        }
-
-        yPosition += 15;
-
-        // Separator line
-        if (index < salesMap.size - 1) {
-          doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
-          yPosition += 25;
-        }
-      });
-
-      // Finalize PDF
-      doc.end();
-
-    } catch (error) {
-      console.error('Error exporting sales PDF:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to export sales report as PDF'
-      });
-    }
-  }
-
-  // Export inventory report as PDF
-  static async exportInventoryReportPDF(req, res) {
-    try {
-      const { search, category, brand, status } = req.query;
-
-      // Build query for all products (no pagination for export)
-      let query = `
-        SELECT p.*, p.created_at, i.stock as current_stock,
-               CASE
-                 WHEN i.stock <= 0 THEN 'Out of Stock'
-                 WHEN i.stock <= 10 THEN 'Low Stock'
-                 ELSE 'In Stock'
-               END as stock_status
-        FROM products p
-        LEFT JOIN inventory i ON p.product_id = i.product_id
-        WHERE 1=1
-      `;
-      let params = [];
-
-      if (search) {
-        query += ' AND (p.name LIKE ? OR p.product_id LIKE ? OR p.brand LIKE ?)';
-        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
-      }
-
-      if (category && category !== 'All Categories') {
-        query += ' AND p.category = ?';
-        params.push(category);
-      }
-
-      if (brand && brand !== 'All Brand') {
-        query += ' AND p.brand = ?';
-        params.push(brand);
-      }
-
-      if (status && status !== 'All Status') {
-        query += ' AND p.status = ?';
-        params.push(status);
-      }
-
-      query += ' ORDER BY p.created_at DESC';
-
-      const pool = getPool();
-      const [products] = await pool.execute(query, params);
-
-      // Create PDF document
-      const doc = new PDFDocument({ margin: 30, size: 'A4' });
-
-      // Set response headers for PDF download
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="inventory_report_${new Date().toISOString().split('T')[0]}.pdf"`);
-
-      // Pipe PDF to response
-      doc.pipe(res);
-
-      // PDF Title
-      doc.fontSize(20).text('Inventory Report', { align: 'center' });
-      doc.moveDown();
-
-      let yPosition = 80;
-
-      products.forEach((product, index) => {
-        // Check if we need a new page
-        if (yPosition > 700) {
-          doc.addPage();
-          yPosition = 50;
-        }
-
-        // Product details
-        doc.fontSize(12).text(`Product ID: ${product.product_id}`, 50, yPosition);
-        yPosition += 20;
-
-        doc.fontSize(10).text(`Name: ${product.name}`, 50, yPosition);
-        yPosition += 15;
-        doc.fontSize(10).text(`Brand: ${product.brand}`, 50, yPosition);
-        yPosition += 15;
-        doc.fontSize(10).text(`Category: ${product.category}`, 50, yPosition);
-        yPosition += 15;
-        doc.fontSize(10).text(`Price: ₱${parseFloat(product.price).toFixed(2)}`, 50, yPosition);
-        yPosition += 15;
-        doc.fontSize(10).text(`Stock: ${product.current_stock || 0}`, 50, yPosition);
-        yPosition += 15;
-        doc.fontSize(10).text(`Status: ${product.stock_status}`, 50, yPosition);
-        yPosition += 15;
-        doc.fontSize(10).text(`Created: ${ReportsController.convertToPhilippineTime(product.created_at) || 'N/A'}`, 50, yPosition);
-        yPosition += 25;
-
-        // Separator line
-        if (index < products.length - 1) {
-          doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
-          yPosition += 20;
-        }
-      });
-
-      // Finalize PDF
-      doc.end();
-
-    } catch (error) {
-      console.error('Error exporting inventory PDF:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to export inventory report as PDF'
-      });
-    }
-  }
 }
-
-

@@ -1195,7 +1195,7 @@ const SalesPage = () => {
                       <option value="">Select payment option</option>
                       {/* --- CONDITIONAL RENDERING BASED ON SETTINGS --- */}
                       {paymentSettings.cash_enabled && (
-                        <option value="Cash">Cash (In-Store / Paid in Advance)</option>
+                        <option value="Cash">Cash</option>
                       )}
                       {paymentSettings.gcash_enabled && (
                         <option value="GCash">GCash</option>

@@ -246,6 +246,8 @@ const InventoryPage = () => {
           newProducts[index].productName = selectedProduct.name;
           newProducts[index].brand = selectedProduct.brand;
           newProducts[index].serialNumber = ''; // Reset serial number
+          // FIX: Set requiresSerial flag based on selected product
+          newProducts[index].requiresSerial = selectedProduct.requires_serial;
         }
       }
 
@@ -1039,21 +1041,27 @@ const InventoryPage = () => {
                             />
                           </td>
                           <td style={{ padding: '8px' }}>
-                            <select
-                              value={row.serialNumber}
-                              onChange={(e) => handleReturnProductRowChange(index, 'serialNumber', e.target.value)}
-                              className="form-input"
-                              style={{height: '36px'}}
-                              required
-                              disabled={!row.productId}
-                            >
-                              <option value="">Select Serial Number</option>
-                              {row.productId && availableSerials[row.productId]?.map(serial => (
-                                <option key={serial.serial_number} value={serial.serial_number}>
-                                  {serial.serial_number}
-                                </option>
-                              ))}
-                            </select>
+                            {row.requiresSerial ? (
+                              <select
+                                value={row.serialNumber}
+                                onChange={(e) => handleReturnProductRowChange(index, 'serialNumber', e.target.value)}
+                                className="form-input"
+                                style={{height: '36px'}}
+                                required
+                                disabled={!row.productId}
+                              >
+                                <option value="">Select Serial Number</option>
+                                {row.productId && availableSerials[row.productId]?.map(serial => (
+                                  <option key={serial.serial_number} value={serial.serial_number}>
+                                    {serial.serial_number}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div style={{ padding: '8px', color: '#6c757d', fontSize: '13px', textAlign: 'left' }}>
+                                N/A
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: '8px' }}>
                             <input

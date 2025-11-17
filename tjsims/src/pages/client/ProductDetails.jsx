@@ -1,131 +1,152 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import Navbar from '../../components/client/Navbar';
 import Footer from '../../components/client/Footer';
-import { productAPI, inventoryAPI } from '../../utils/api';
+import '../../styles/Products.css';
+import { inventoryAPI } from '../../utils/api';
 
-const currency = (n) => `₱ ${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const currency = (n) => `₱ ${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
 
-const ProductDetails = () => {
-  const { id } = useParams(); // URL slug (product name)
-  const location = useLocation();
-  const productId = location.state?.productId; // Actual product ID from state
-  const [product, setProduct] = useState(null);
-  const [stock, setStock] = useState(0);
+const Products = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const search = searchParams.get('q') || '';
+  const category = searchParams.get('category') || '';
+
   useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        setLoading(true);
-        // Use productId from state, fallback to id param for backward compatibility
-        const lookupId = productId || id;
-        const res = await productAPI.getProductById(lookupId);
-        const p = res?.data || res; // backend may wrap
-        if (mounted) setProduct(p);
-        try {
-          const invRes = await inventoryAPI.getProductsWithInventory();
-          // API shape can be either { data: { products: [...] } } or { data: [...] }
-          const list = invRes?.data?.products || invRes?.data || invRes || [];
-          const found = list.find((x) => (x.product_id || x.productId) === (p.product_id || lookupId));
-          if (mounted) setStock(found?.stock ?? found?.currentStock ?? 0);
-        } catch {}
-      } catch (e) {
-        setError(e.message || 'Failed to load product');
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    load();
-    return () => { mounted = false; };
-  }, [id, productId]);
+    let isMounted = true;
+    setLoading(true);
+
+    // Pull products with inventory so we can show stock and filter by availability
+    inventoryAPI.getProductsWithInventory()
+      .then((res) => {
+        const list = res?.data?.products || res?.data || res || [];
+        // Normalize fields and filter Active with stock > 0
+        const normalized = list.map(p => ({
+          id: p.id,
+          product_id: p.product_id || p.productId,
+          name: p.name,
+          brand: p.brand,
+          category: p.category,
+          price: p.price,
+          status: p.status,
+          image: p.image,
+          stock: p.stock ?? p.currentStock ?? 0,
+        }));
+        
+        // FIX: Removed the "&& Number(p.stock) > 0" check so Out of Stock items still appear
+        const available = normalized.filter(p => p.status === 'Active');
+        
+        if (isMounted) setProducts(available);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => isMounted && setLoading(false));
+    return () => { isMounted = false; };
+  }, []);
+
+  const filtered = useMemo(() => {
+    const norm = (v) => String(v || '').trim().toLowerCase();
+    const base = products.filter(p => !category || norm(p.category) === norm(category));
+    if (!search) return base;
+    const s = search.toLowerCase();
+    return base.filter(p =>
+      p.name?.toLowerCase().includes(s) ||
+      p.brand?.toLowerCase().includes(s) ||
+      p.category?.toLowerCase().includes(s) ||
+      String(p.product_id || '').toLowerCase().includes(s)
+    );
+  }, [products, search, category]);
+
+  const categories = useMemo(() => {
+    const set = new Set();
+    products.forEach(p => { if (p.category) set.add(p.category); });
+    return Array.from(set).sort();
+  }, [products]);
 
   return (
     <div className="products-page">
       <Navbar />
-      <main className="products-main" style={{ maxWidth: 1100, margin: '0 auto', padding: '20px' }}>
-        <div style={{ marginBottom: 16 }}>
-          <Link to="/products" className="nav-link">← Back to Products</Link>
-        </div>
-        {loading && <div className="product-card">Loading...</div>}
-        {error && !loading && <div className="product-card">{error}</div>}
-        {!loading && !error && product && (() => {
-          const available = (product.status === 'Active') && (Number(stock) > 0);
-          if (!available) {
-            return (
-              <div className="product-card" style={{ padding: 24, background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-                <h2 style={{ marginTop: 0, color: '#0f2544' }}>Product Unavailable</h2>
-                <p style={{ color: '#475569' }}>This product is currently not available. It may be out of stock or inactive.</p>
-                <div style={{ marginTop: 12 }}>
-                  <Link to="/products" className="nav-link">← Back to Products</Link>
-                </div>
-              </div>
-            );
-          }
-          return (
-          <div className="details-card" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-            <div className="image-col" style={{ borderRight: '1px solid #eee', paddingRight: 24 }}>
-              <div style={{ width: '100%', paddingTop: '75%', position: 'relative', background: '#fafafa', borderRadius: 8, overflow: 'hidden' }}>
-                <img
-                  src={product.image ? (String(product.image).startsWith('http') ? product.image : `http://localhost:5000${product.image}`) : ''}
-                  alt={product.name}
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
-                />
-              </div>
-            </div>
-            <div className="info-col" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <h1 style={{ margin: 0, fontSize: 28, color: '#0f2544' }}>{product.name}</h1>
-              <div className="meta" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <span className="badge" style={{ background: '#eef6ff', color: '#0b63c5', padding: '4px 10px', borderRadius: 999 }}>{product.brand}</span>
-                <span className="badge" style={{ background: '#f1f8e9', color: '#33691e', padding: '4px 10px', borderRadius: 999 }}>{product.category}</span>
-                <span className="badge" style={{ background: product.status === 'Active' ? '#e8f5e9' : '#ffebee', color: product.status === 'Active' ? '#1b5e20' : '#b71c1c', padding: '4px 10px', borderRadius: 999 }}>{product.status}</span>
-              </div>
-              <div className="price" style={{ fontSize: 24, fontWeight: 700, color: '#0b63c5' }}>{currency(product.price)}</div>
-              {Number(stock) > 0 && product.status === 'Active' && (
-                <div className="stock" style={{ fontSize: 14, color: '#455a64' }}>In stock: <strong>{stock}</strong></div>
-              )}
-              <div className="description" style={{ marginTop: 8, whiteSpace: 'pre-wrap', color: '#37474f' }}>
-                {product.description || 'No description provided.'}
-              </div>
-              
-              {/* Vehicle Compatibility Section */}
-              {product.vehicle_compatibility && (
-                <div className="vehicle-compatibility" style={{ marginTop: 20, padding: 16, background: '#f8f9fa', borderRadius: 8, border: '1px solid #e9ecef' }}>
-                  <h3 style={{ margin: '0 0 12px 0', fontSize: 16, color: '#0f2544', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 20 }}>🚗</span>
-                    Vehicle Compatibility
-                  </h3>
-                  <div style={{ fontSize: 14, color: '#475569', lineHeight: 1.6 }}>
-                    {typeof product.vehicle_compatibility === 'string' 
-                      ? product.vehicle_compatibility.split(',').map((v, i) => (
-                          <div key={i} style={{ padding: '6px 0', borderBottom: i < product.vehicle_compatibility.split(',').length - 1 ? '1px solid #e9ecef' : 'none' }}>
-                            • {v.trim()}
-                          </div>
-                        ))
-                      : Array.isArray(product.vehicle_compatibility)
-                      ? product.vehicle_compatibility.map((v, i) => (
-                          <div key={i} style={{ padding: '6px 0', borderBottom: i < product.vehicle_compatibility.length - 1 ? '1px solid #e9ecef' : 'none' }}>
-                            • {v}
-                          </div>
-                        ))
-                      : <div>{product.vehicle_compatibility}</div>
-                    }
-                  </div>
-                </div>
-              )}
-              
-              <div className="sub-details" style={{ marginTop: 12, fontSize: 14, color: '#546e7a' }}></div>
-            </div>
+
+      {/* Main Content */}
+      <main className="products-main">
+
+        {/* Search and Filter Section */}
+        <div className="search-filter-container">
+          <div className="search-box">
+            <input 
+              type="text" 
+              placeholder="Search" 
+              className="search-input"
+              value={search}
+              onChange={(e) => { const p = new URLSearchParams(searchParams); if (e.target.value) { p.set('q', e.target.value); } else { p.delete('q'); } setSearchParams(p); }}
+            />
+            <button className="search-button">
+              <i className="fas fa-search"></i>
+            </button>
           </div>
-          );
-        })()}
+          
+          {/* Category Buttons */}
+          <div className="category-buttons">
+            {categories.map((c) => (
+              <button key={c} className="category-btn" onClick={() => { const np = new URLSearchParams(searchParams); np.set('category', c); setSearchParams(np); }}>{c}</button>
+            ))}
+            <button className="category-btn" onClick={() => { const np = new URLSearchParams(searchParams); np.delete('category'); setSearchParams(np); }}>All Categories</button>
+          </div>
+        </div>
+
+      <h2 style={{color: "#2c3e50"}}>All Products</h2>
+        <div className="products-grid">
+          {!loading && !error && filtered.map((p) => {
+            const isOutOfStock = Number(p.stock) <= 0;
+            
+            return (
+            <div key={p.product_id || p.id} className="product-card" style={{ opacity: isOutOfStock ? 0.8 : 1 }}>
+                {/* (The product-image-wrapper) */}
+                <div className="product-image-wrapper">
+                {/* FIX: Dynamic Badge Color and Text */}
+                <div className="stock-badge" style={{ background: isOutOfStock ? '#dc3545' : '#10b981' }}>
+                  {isOutOfStock ? 'Out of Stock' : 'In Stock'}
+                </div>
+                
+                <img 
+                    src={p.image ? (p.image.startsWith('http') ? p.image : `http://localhost:5000${p.image}`) : 'https://placehold.co/400x300?text=No+Image'} 
+                    alt={p.name} 
+                    onError={(e) => {
+                      e.currentTarget.onerror = null; // Prevent infinite loop
+                      e.currentTarget.src = 'https://placehold.co/400x300?text=No+Image';
+                    }}
+                    className="product-image"
+                    style={{ filter: isOutOfStock ? 'grayscale(100%)' : 'none' }}
+                />
+                </div>
+                {/* (The product-info) */}
+                <div className="product-info">
+                    <span className="product-brand">{p.brand}</span>
+                    <h3 className="product-title">{p.name}</h3>
+                    <div className="product-price-section">
+                    <span className="product-label">Price</span>
+                    <span className="product-price">{currency(p.price)}</span>
+                    </div>
+                    <Link 
+                    to={`/products/${encodeURIComponent(p.name.toLowerCase().replace(/\s+/g, '-'))}`} 
+                    state={{ productId: p.product_id || p.id }}
+                    className="view-details-button"
+                    >
+                    View Details <span className="arrow">›</span>
+                    </Link>
+                </div>
+            </div>
+            );
+          })}
+        </div>
       </main>
+
       <Footer />
     </div>
   );
 };
 
-export default ProductDetails;
+export default Products;

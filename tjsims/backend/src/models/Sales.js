@@ -9,6 +9,7 @@ export class Sales {
       contact,
       payment,
       payment_status,
+      delivery_type, // FIX: Added this
       total,
       items
     } = salesData;
@@ -22,10 +23,21 @@ export class Sales {
 
     try {
       // Insert sale record
+      // FIX: Added delivery_type column and value
       const [saleResult] = await connection.execute(
-        `INSERT INTO sales (sale_number, customer_name, contact, payment, payment_status, status, address, total, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [saleNumber, customer_name, contact, payment, payment_status || 'Unpaid', salesData.status || 'Pending', salesData.address || null, total]
+        `INSERT INTO sales (sale_number, customer_name, contact, payment, payment_status, status, address, delivery_type, total, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          saleNumber, 
+          customer_name, 
+          contact, 
+          payment, 
+          payment_status || 'Unpaid', 
+          salesData.status || 'Pending', 
+          salesData.address || null, 
+          delivery_type || 'In-store', // Default to In-store
+          total
+        ]
       );
 
       const saleId = saleResult.insertId;
@@ -42,10 +54,9 @@ export class Sales {
           [saleId, product_id, product_name, brand, price, quantity, subtotal]
         );
         
-        // REVISION: Get the inserted sale_item_id
         const saleItemId = itemResult.insertId;
 
-        // REVISION: Mark serial numbers as sold, inside the transaction
+        // Mark serial numbers as sold
         if (serialNumbers && serialNumbers.length > 0) {
           for (const sn of serialNumbers) {
             const [updateResult] = await connection.execute(
@@ -55,7 +66,6 @@ export class Sales {
               [saleId, saleItemId, sn]
             );
             
-            // Optional: Check if the serial number was actually updated
             if (updateResult.affectedRows === 0) {
               throw new Error(`Serial number ${sn} is not available or does not exist.`);
             }
@@ -83,7 +93,6 @@ export class Sales {
                     (date.getMonth() + 1).toString().padStart(2, '0') +
                     date.getDate().toString().padStart(2, '0');
 
-    // Get the last sale number for today
     const [lastSale] = await pool.execute(
       'SELECT sale_number FROM sales WHERE sale_number LIKE ? ORDER BY id DESC LIMIT 1',
       [`SL${dateStr}%`]
@@ -100,7 +109,6 @@ export class Sales {
   }
 
   static async updateInventory(connection, productId, quantity) {
-    // Get current inventory
     const [inventory] = await connection.execute(
       'SELECT stock FROM inventory WHERE product_id = ?',
       [productId]
@@ -116,13 +124,11 @@ export class Sales {
       throw new Error(`Insufficient stock for product ${productId}. Available: ${currentStock}, Requested: ${quantity}`);
     }
 
-    // Update inventory
     await connection.execute(
       'UPDATE inventory SET stock = stock - ?, updated_at = NOW() WHERE product_id = ?',
       [quantity, productId]
     );
 
-    // Create inventory transaction record
     const transactionId = `TXN${Date.now()}`;
     await connection.execute(
       `INSERT INTO inventory_transactions (transaction_id, inventory_id, product_id, transaction_type, quantity, notes, transaction_date, created_by)
@@ -232,7 +238,7 @@ export class Sales {
       updates.push('total = ?');
       params.push(total);
     }
-    if (status !== undefined) { // ADD THIS BLOCK
+    if (status !== undefined) { 
       updates.push('status = ?');
       params.push(status);
     }
@@ -251,16 +257,12 @@ export class Sales {
 
   static async delete(id) {
     const pool = getPool();
-
-    // Start transaction to restore inventory
     const connection = await pool.getConnection();
     await connection.beginTransaction();
 
     try {
-      // Get sale items to restore inventory
       const saleItems = await this.getSaleItems(id);
 
-      // Restore inventory for each item
       for (const item of saleItems) {
         await connection.execute(
           'UPDATE inventory SET stock = stock + ?, updated_at = NOW() WHERE product_id = ?',
@@ -268,10 +270,7 @@ export class Sales {
         );
       }
 
-      // Delete sale items first
       await connection.execute('DELETE FROM sale_items WHERE sale_id = ?', [id]);
-
-      // Delete sale
       const [result] = await connection.execute('DELETE FROM sales WHERE id = ?', [id]);
 
       await connection.commit();

@@ -6,7 +6,8 @@ export class SalesController {
   // Create a new sale
   static async createSale(req, res) {
     try {
-      const { customer_name, contact, payment, payment_status, status, address, items } = req.body;
+      // FIX: Added delivery_type to destructuring
+      const { customer_name, contact, payment, payment_status, status, address, delivery_type, items } = req.body;
 
       // Validate required fields
       if (!customer_name || !payment || !items || items.length === 0) {
@@ -21,7 +22,6 @@ export class SalesController {
       const enrichedItems = [];
 
       for (const item of items) {
-        // --- FIX: Destructure serialNumbers from the item ---
         const { product_id, quantity, serialNumbers } = item;
 
         if (!product_id || !quantity || quantity <= 0) {
@@ -49,7 +49,6 @@ export class SalesController {
           brand: product.brand,
           price: product.price,
           quantity: quantity,
-          // --- FIX: Pass the serialNumbers to the create method ---
           serialNumbers: serialNumbers || []
         });
       }
@@ -62,6 +61,7 @@ export class SalesController {
         payment_status,
         status,
         address,
+        delivery_type, // FIX: Included delivery_type in saleData
         total,
         items: enrichedItems
       };
@@ -89,25 +89,24 @@ export class SalesController {
   // Get all sales with optional filters
   static async getAllSales(req, res) {
     try {
-      // --- MODIFIED: Destructure delivery_type ---
+      // FIX: Added delivery_type to query parameters
       const { search, date_from, date_to, delivery_type, page = 1, limit = 10 } = req.query;
 
-      const filters = { search, date_from, date_to, delivery_type };
       const offset = (page - 1) * limit;
 
-      // --- MODIFIED: Constructing the count query with all filters ---
+      // Construct queries
       let countQuery = "SELECT COUNT(*) as total FROM sales WHERE 1=1 AND (status IS NULL OR status <> 'Cancelled')";
       let countParams = [];
 
-      // Get paginated results
       let query = "SELECT * FROM sales WHERE 1=1 AND (status IS NULL OR status <> 'Cancelled')";
       let params = [];
 
       if (search) {
+        const searchTerm = `%${search}%`;
         query += ' AND (sale_number LIKE ? OR customer_name LIKE ? OR contact LIKE ?)';
-        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+        params.push(searchTerm, searchTerm, searchTerm);
         countQuery += ' AND (sale_number LIKE ? OR customer_name LIKE ? OR contact LIKE ?)';
-        countParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+        countParams.push(searchTerm, searchTerm, searchTerm);
       }
 
       if (date_from) {
@@ -124,24 +123,23 @@ export class SalesController {
         countParams.push(date_to);
       }
 
-      // --- ADDED: Filter by delivery_type ---
+      // FIX: Add delivery_type filter logic
       if (delivery_type) {
         query += ' AND delivery_type = ?';
         params.push(delivery_type);
         countQuery += ' AND delivery_type = ?';
         countParams.push(delivery_type);
       }
-      // --- END ADDED ---
 
       const { getPool } = await import('../config/database.js');
       const pool = getPool();
       
-      // Execute the count query with all filters
+      // Get total count
       const [totalResult] = await pool.execute(countQuery, countParams);
       const total = totalResult[0].total;
       const totalPages = Math.ceil(total / limit);
 
-      // Now apply limit/offset to the main query
+      // Get paginated data
       query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
       params.push(parseInt(limit), parseInt(offset));
 
@@ -207,7 +205,6 @@ export class SalesController {
       const { id } = req.params;
       const { customer_name, contact, payment, payment_status, total, status } = req.body;
 
-      // First, check if the sale exists and get current status
       const currentSale = await Sales.findById(id);
       if (!currentSale) {
         return res.status(404).json({
@@ -216,7 +213,6 @@ export class SalesController {
         });
       }
 
-      // Check if the order is in a final state (Completed or Cancelled)
       if (currentSale.status === 'Completed' || currentSale.status === 'Cancelled') {
         return res.status(400).json({
           success: false,
@@ -230,11 +226,11 @@ export class SalesController {
       if (payment !== undefined) updateData.payment = payment;
       if (payment_status !== undefined) updateData.payment_status = payment_status;
       if (total !== undefined) updateData.total = total;
-      if (status !== undefined) updateData.status = status; // ADD THIS LINE
+      if (status !== undefined) updateData.status = status;
 
-      // Business rule: Completed requires Paid payment_status
       const nextPaymentStatus = (payment_status !== undefined ? payment_status : (currentSale.payment_status || 'Unpaid'));
       const nextOrderStatus = (status !== undefined ? status : currentSale.status);
+      
       if (nextOrderStatus === 'Completed' && nextPaymentStatus !== 'Paid') {
         return res.status(400).json({
           success: false,
@@ -264,7 +260,7 @@ export class SalesController {
     }
   }
 
-  // Delete a sale (with inventory restoration)
+  // Delete a sale
   static async deleteSale(req, res) {
     try {
       const { id } = req.params;
@@ -311,12 +307,11 @@ export class SalesController {
     }
   }
 
-  // Get sale items for a specific sale
+  // Get sale items
   static async getSaleItems(req, res) {
     try {
       const { sale_id } = req.params;
 
-      // Verify sale exists
       const sale = await Sales.findById(sale_id);
       if (!sale) {
         return res.status(404).json({
@@ -340,7 +335,7 @@ export class SalesController {
     }
   }
 
-  // Upload delivery proof for a sale
+  // Upload delivery proof
   static async uploadDeliveryProof(req, res) {
     try {
       const { id } = req.params;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '../../components/admin/Navbar';
-import { generateSalesReportPDF, generateInventoryReportPDF } from '../../utils/pdfGenerator';
+import { generateSalesReportPDF, generateInventoryReportPDF, generateReturnsReportPDF } from '../../utils/pdfGenerator';
 import { reportsAPI } from '../../utils/api';
 import { 
   BsFileEarmarkPdf, 
@@ -429,7 +429,7 @@ const ReportsPage = () => {
         );
         doc.save(`Sales_Report_${startDate}_to_${endDate}.pdf`);
         
-      } else { // activeTab is 'inventory'
+      } else if (activeTab === 'inventory') { // activeTab is 'inventory'
       
         // Export inventory report
         const allInventoryResult = await reportsAPI.getInventoryReport({
@@ -455,8 +455,29 @@ const ReportsPage = () => {
           adminName
         );
         doc.save(`Inventory_Report_${startDate}_to_${endDate}.pdf`);
+      } else if (activeTab === 'returns') { // --- NEW: activeTab is 'returns'
+        // Export returns report
+        const allReturnsResult = await reportsAPI.getReturnsReport({
+          startDate: startDate,
+          endDate: endDate,
+          limit: 999999 // Fetch all
+        });
+
+        const returnsDataForPDF = allReturnsResult.returns || [];
+
+        if (returnsDataForPDF.length === 0) {
+            alert('No returns data found for this period.');
+            return;
+        }
+
+        const doc = await generateReturnsReportPDF(
+            returnsDataForPDF,
+            startDate,
+            endDate,
+            adminName
+        );
+        doc.save(`Returns_Report_${startDate}_to_${endDate}.pdf`);
       }
-      // --- NO PDF EXPORT FOR RETURNS (YET) ---
     } catch (error) {
       console.error('Error exporting PDF:', error);
       alert('Failed to export PDF: ' + error.message);
@@ -626,12 +647,10 @@ const ReportsPage = () => {
                 </div>
 
                 <div className="export-buttons">
-                  {/* PDF button is disabled for Returns tab for now */}
                   <button 
                     onClick={handleExportPDF} 
                     className="btn btn-danger"
-                    disabled={activeTab === 'returns'}
-                    title={activeTab === 'returns' ? 'PDF Export not available for Returns' : 'Export as PDF'}
+                    title='Export as PDF'
                   >
                     <BsFileEarmarkPdf className="export-icon" />
                     Export PDF
