@@ -2,12 +2,12 @@ import { getPool } from '../config/database.js';
 
 export class SerialNumber {
   // Create a new serial number
-  static async create({ serialNumber, productId, notes = null }) {
+  static async create({ serialNumber, productId, notes = null, supplierId = null }) {
     const pool = getPool();
     const [result] = await pool.execute(
-      `INSERT INTO serial_numbers (serial_number, product_id, status, notes)
-       VALUES (?, ?, 'available', ?)`,
-      [serialNumber, productId, notes]
+      `INSERT INTO serial_numbers (serial_number, product_id, status, notes, supplier_id)
+       VALUES (?, ?, 'available', ?, ?)`,
+      [serialNumber, productId, notes, supplierId]
     );
     return result.insertId;
   }
@@ -41,9 +41,9 @@ export class SerialNumber {
       const createdIds = [];
       for (const sn of serialNumbers) {
         const [result] = await connection.execute(
-          `INSERT INTO serial_numbers (serial_number, product_id, status, notes)
-           VALUES (?, ?, 'available', ?)`,
-          [sn.serialNumber, sn.productId, sn.notes || null]
+          `INSERT INTO serial_numbers (serial_number, product_id, status, notes, supplier_id)
+           VALUES (?, ?, 'available', ?, ?)`,
+          [sn.serialNumber, sn.productId, sn.notes || null, sn.supplierId || null]
         );
         createdIds.push(result.insertId);
       }

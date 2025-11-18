@@ -51,17 +51,14 @@ const OrderStatus = () => {
       // Try filter by sale_number on backend; use exact match only, no fallback
       const list = await salesAPI.getSales({ sale_number: orderId.trim() });
       const found = (list || []).find(s => (s.sale_number || '').toLowerCase() === orderId.trim().toLowerCase());
+      
       if (!found) {
         setError('Order not found.');
         return;
       }
       
-      // Only show Company Delivery orders
-      const deliveryType = String(found.delivery_type || '').toLowerCase();
-      if (deliveryType !== 'company delivery') {
-        setError('Order not found.');
-        return;
-      }
+      // REMOVED: The block that checked for "Company Delivery" was deleted here.
+      // Now it will proceed to show the order regardless of delivery_type.
       
       const items = await salesAPI.getSaleItems(found.id);
       const isCancelled = String(found.status || '').toLowerCase().includes('cancel');
@@ -137,8 +134,9 @@ const OrderStatus = () => {
                 <Badge color={paymentColor(order.header.payment_status)}>{order.header.payment_status}</Badge>
               </div>
               <div>
-                <div style={{ color: '#334155', fontSize: 14 }}>Shipping Option:</div>
-                <Badge color={{ bg: '#e2e8f0', fg: '#0f172a' }}>{order.header.payment}</Badge>
+                <div style={{ color: '#334155', fontSize: 14 }}>Shipping/Pickup:</div>
+                {/* CHANGED: Display delivery_type instead of payment here to show In-Store vs Delivery */}
+                <Badge color={{ bg: '#e2e8f0', fg: '#0f172a' }}>{order.header.delivery_type || order.header.payment}</Badge>
               </div>
             </div>
 

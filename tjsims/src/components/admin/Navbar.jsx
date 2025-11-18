@@ -4,7 +4,7 @@ import { FaChevronDown } from 'react-icons/fa';
 import { BiUserCircle } from 'react-icons/bi';
 import tcjLogo from '../../assets/tcj_logo.png';
 import { authAPI } from '../../utils/api';
-import '../../styles/Admin.css'; // <-- THIS LINE IS THE ONLY ADDITION
+import '../../styles/Admin.css';
 
 const Navbar = () => {
   const location = useLocation();
@@ -36,6 +36,7 @@ const Navbar = () => {
     { path: '/admin/dashboard', label: 'Dashboard' },
     { path: '/admin/sales', label: 'Sales' },
     { path: '/admin/inventory', label: 'Inventory' },
+    { path: '/admin/suppliers', label: 'Suppliers' }, // New Supplier Link
     { path: '/admin/orders', label: 'Orders' },
     { path: '/admin/reports', label: 'Reports' },
     { path: '/admin/products', label: 'Products' },

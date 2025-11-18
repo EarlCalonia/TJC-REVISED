@@ -28,10 +28,15 @@ export class Supplier {
       address
     } = supplierData;
 
+    // Generate unique supplier_id (SUP-001)
+    const [maxIdResult] = await pool.execute('SELECT MAX(id) as maxId FROM suppliers');
+    const nextId = (maxIdResult[0].maxId || 0) + 1;
+    const supplierId = `SUP-${nextId.toString().padStart(3, '0')}`;
+
     const [result] = await pool.execute(
-      `INSERT INTO suppliers (name, contact_person, email, phone, address)
-       VALUES (?, ?, ?, ?, ?)`,
-      [name, contact_person, email, phone, address]
+      `INSERT INTO suppliers (supplier_id, name, contact_person, email, phone, address, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'Active')`,
+      [supplierId, name, contact_person, email, phone, address]
     );
 
     return result.insertId;
@@ -44,7 +49,8 @@ export class Supplier {
       contact_person,
       email,
       phone,
-      address
+      address,
+      status
     } = supplierData;
 
     const [result] = await pool.execute(
@@ -53,9 +59,10 @@ export class Supplier {
            contact_person = ?,
            email = ?,
            phone = ?,
-           address = ?
+           address = ?,
+           status = ?
        WHERE id = ?`,
-      [name, contact_person, email, phone, address, id]
+      [name, contact_person, email, phone, address, status || 'Active', id]
     );
 
     return result.affectedRows > 0;

@@ -14,6 +14,7 @@ import ReportsPage from './pages/admin/ReportsPage';
 import ProductPage from './pages/admin/ProductPage';
 import SettingsPage from './pages/admin/SettingsPage';
 import DeliveryPortal from './pages/admin/DeliveryPortal';
+import SuppliersPage from './pages/admin/SuppliersPage'; // <--- IMPORT THIS
 
 // A wrapper component to handle authentication and optional role restriction
 const PrivateRoute = ({ children, allowedRoles }) => {
@@ -37,12 +38,8 @@ const App = () => {
     <Router>
       <Routes>
         {/* Client Routes */}
-        {/* CHANGE: Redirect root "/" to "/products" immediately */}
         <Route path="/" element={<Navigate to="/products" replace />} />
-        
-        {/* Landing page accessible via /home if needed, or you can remove this */}
         <Route path="/home" element={<LandingPage />} />
-        
         <Route path="/products" element={<Products />} />
         <Route path="/order-status" element={<OrderStatus />} />
         <Route path="/contact-us" element={<ContactUs />} />
@@ -79,6 +76,15 @@ const App = () => {
           element={
             <PrivateRoute allowedRoles={['admin']}>
               <InventoryPage />
+            </PrivateRoute>
+          } 
+        />
+        {/* NEW SUPPLIER ROUTE */}
+        <Route 
+          path="/admin/suppliers" 
+          element={
+            <PrivateRoute allowedRoles={['admin']}>
+              <SuppliersPage />
             </PrivateRoute>
           } 
         />
@@ -123,7 +129,6 @@ const App = () => {
           } 
         />
         
-        {/* Catch-all: Redirect any unknown routes to Products */}
         <Route path="*" element={<Navigate to="/products" replace />} />
       </Routes>
     </Router>

@@ -18,7 +18,7 @@ export class DashboardController {
         `SELECT COALESCE(SUM(total), 0) as total FROM sales WHERE YEARWEEK(created_at) = YEARWEEK(NOW()) AND (status IS NULL OR status <> 'Cancelled')`
       );
 
-      // Low stock items count (including out of stock) - join products and inventory tables
+      // Low stock items count (including out of stock)
       const [lowStock] = await pool.execute(
         `SELECT COUNT(*) as count
          FROM products p
@@ -26,9 +26,10 @@ export class DashboardController {
          WHERE i.stock <= i.reorder_point`
       );
 
-      // Pending orders count (exclude completed/cancelled)
+      // UPDATED: Pending orders count (Only count Pending and Processing)
+      // Previously this counted everything NOT Completed/Cancelled, which wrongly included Returns.
       const [pendingOrders] = await pool.execute(
-        `SELECT COUNT(*) as count FROM sales WHERE (status IS NULL OR status NOT IN ('Completed', 'Cancelled'))`
+        `SELECT COUNT(*) as count FROM sales WHERE status IN ('Pending', 'Processing')`
       );
 
       res.json({
@@ -79,7 +80,7 @@ export class DashboardController {
     }
   }
 
-  // Get low stock items (including out of stock)
+  // Get low stock items
   static async getLowStockItems(req, res) {
     try {
       const pool = getPool();
@@ -106,46 +107,35 @@ export class DashboardController {
     }
   }
 
-  // Get daily sales for the last 7 days
+  // Get daily sales
   static async getDailySales(req, res) {
     try {
       const pool = getPool();
-
       const { period = 'week', start_date, end_date, granularity } = req.query;
 
       let query = '';
       let params = [];
 
-      // If an explicit date range is provided, prioritize it
       if (start_date || end_date) {
         const groupBy = (granularity || 'day').toLowerCase();
+        let groupClause = 'GROUP BY DATE(created_at)';
+        let selectDate = 'DATE(created_at) as date';
+
         if (groupBy === 'month') {
-          query = `
-            SELECT DATE(DATE_FORMAT(created_at, '%Y-%m-01')) as date,
-                   COALESCE(SUM(total), 0) as total,
-                   COUNT(*) as orders
-            FROM sales
-            WHERE (status IS NULL OR status <> 'Cancelled')
-          `;
+           selectDate = "DATE(DATE_FORMAT(created_at, '%Y-%m-01')) as date";
+           groupClause = 'GROUP BY YEAR(created_at), MONTH(created_at)';
         } else if (groupBy === 'week') {
-          // Use Monday as start of week
-          query = `
-            SELECT DATE(DATE_SUB(DATE(created_at), INTERVAL WEEKDAY(created_at) DAY)) as date,
-                   COALESCE(SUM(total), 0) as total,
-                   COUNT(*) as orders
-            FROM sales
-            WHERE (status IS NULL OR status <> 'Cancelled')
-          `;
-        } else {
-          // Default: group by day
-          query = `
-            SELECT DATE(created_at) as date,
-                   COALESCE(SUM(total), 0) as total,
-                   COUNT(*) as orders
-            FROM sales
-            WHERE (status IS NULL OR status <> 'Cancelled')
-          `;
+           selectDate = "DATE(DATE_SUB(DATE(created_at), INTERVAL WEEKDAY(created_at) DAY)) as date";
+           groupClause = 'GROUP BY YEAR(created_at), WEEK(created_at, 3)';
         }
+
+        query = `
+            SELECT ${selectDate},
+                   COALESCE(SUM(total), 0) as total,
+                   COUNT(*) as orders
+            FROM sales
+            WHERE (status IS NULL OR status <> 'Cancelled')
+        `;
 
         if (start_date) {
           query += ' AND DATE(created_at) >= ?';
@@ -156,19 +146,11 @@ export class DashboardController {
           params.push(end_date);
         }
 
-        if (groupBy === 'month') {
-          query += ' GROUP BY YEAR(created_at), MONTH(created_at)';
-        } else if (groupBy === 'week') {
-          query += ' GROUP BY YEAR(created_at), WEEK(created_at, 3)';
-        } else {
-          query += ' GROUP BY DATE(created_at)';
-        }
-        query += ' ORDER BY date ASC';
+        query += ` ${groupClause} ORDER BY date ASC`;
 
       } else {
-        // Backward compatible: period-based aggregation
+        // Default period logic
         if (period === 'year') {
-          // Aggregate by month for the last 12 months
           query = `
             SELECT DATE(DATE_FORMAT(created_at, '%Y-%m-01')) as date,
                    COALESCE(SUM(total), 0) as total,
@@ -180,7 +162,6 @@ export class DashboardController {
             ORDER BY date ASC
           `;
         } else if (period === 'month') {
-          // Aggregate by day for last 30 days
           query = `
             SELECT DATE(created_at) as date,
                    COALESCE(SUM(total), 0) as total,
@@ -192,7 +173,6 @@ export class DashboardController {
             ORDER BY date ASC
           `;
         } else {
-          // Default week: last 7 days by day
           query = `
             SELECT DATE(created_at) as date,
                    COALESCE(SUM(total), 0) as total,
@@ -221,7 +201,7 @@ export class DashboardController {
     }
   }
 
-  // Get fast moving products (top 5 by quantity sold in last 30 days)
+  // Get fast moving products
   static async getFastMovingProducts(req, res) {
     try {
       const pool = getPool();
@@ -255,7 +235,7 @@ export class DashboardController {
     }
   }
 
-  // Get slow moving products (bottom 5 by quantity sold in last 30 days, excluding zero sales)
+  // Get slow moving products
   static async getSlowMovingProducts(req, res) {
     try {
       const pool = getPool();
@@ -289,7 +269,6 @@ export class DashboardController {
     }
   }
 
-  // --- NEW FUNCTION ---
   // Get sales aggregated by category
   static async getSalesByCategory(req, res) {
     try {

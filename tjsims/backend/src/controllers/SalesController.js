@@ -1,15 +1,14 @@
 import { Sales } from '../models/Sales.js';
 import { SaleItem } from '../models/SaleItem.js';
 import { Product } from '../models/Product.js';
+import { getPool } from '../config/database.js'; // Added import for getPool
 
 export class SalesController {
   // Create a new sale
   static async createSale(req, res) {
     try {
-      // FIX: Added delivery_type to destructuring
       const { customer_name, contact, payment, payment_status, status, address, delivery_type, items } = req.body;
 
-      // Validate required fields
       if (!customer_name || !payment || !items || items.length === 0) {
         return res.status(400).json({
           success: false,
@@ -17,7 +16,6 @@ export class SalesController {
         });
       }
 
-      // Validate and enrich items with product data
       let total = 0;
       const enrichedItems = [];
 
@@ -31,7 +29,6 @@ export class SalesController {
           });
         }
 
-        // Get product details
         const product = await Product.findById(product_id);
         if (!product) {
           return res.status(404).json({
@@ -53,7 +50,6 @@ export class SalesController {
         });
       }
 
-      // Create the sale
       const saleData = {
         customer_name,
         contact,
@@ -61,7 +57,7 @@ export class SalesController {
         payment_status,
         status,
         address,
-        delivery_type, // FIX: Included delivery_type in saleData
+        delivery_type,
         total,
         items: enrichedItems
       };
@@ -89,12 +85,9 @@ export class SalesController {
   // Get all sales with optional filters
   static async getAllSales(req, res) {
     try {
-      // FIX: Added delivery_type to query parameters
       const { search, date_from, date_to, delivery_type, page = 1, limit = 10 } = req.query;
-
       const offset = (page - 1) * limit;
 
-      // Construct queries
       let countQuery = "SELECT COUNT(*) as total FROM sales WHERE 1=1 AND (status IS NULL OR status <> 'Cancelled')";
       let countParams = [];
 
@@ -123,7 +116,6 @@ export class SalesController {
         countParams.push(date_to);
       }
 
-      // FIX: Add delivery_type filter logic
       if (delivery_type) {
         query += ' AND delivery_type = ?';
         params.push(delivery_type);
@@ -131,15 +123,12 @@ export class SalesController {
         countParams.push(delivery_type);
       }
 
-      const { getPool } = await import('../config/database.js');
       const pool = getPool();
       
-      // Get total count
       const [totalResult] = await pool.execute(countQuery, countParams);
       const total = totalResult[0].total;
       const totalPages = Math.ceil(total / limit);
 
-      // Get paginated data
       query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
       params.push(parseInt(limit), parseInt(offset));
 
@@ -172,7 +161,6 @@ export class SalesController {
   static async getSaleById(req, res) {
     try {
       const { id } = req.params;
-
       const sale = await Sales.findById(id);
       if (!sale) {
         return res.status(404).json({
@@ -180,15 +168,10 @@ export class SalesController {
           message: 'Sale not found'
         });
       }
-
       const saleItems = await Sales.getSaleItems(id);
-
       res.json({
         success: true,
-        data: {
-          ...sale,
-          items: saleItems
-        }
+        data: { ...sale, items: saleItems }
       });
     } catch (error) {
       console.error('Error fetching sale:', error);
@@ -239,14 +222,12 @@ export class SalesController {
       }
 
       const updated = await Sales.update(id, updateData);
-
       if (!updated) {
         return res.status(404).json({
           success: false,
           message: 'Sale not found or no changes made'
         });
       }
-
       res.json({
         success: true,
         message: 'Sale updated successfully'
@@ -264,16 +245,13 @@ export class SalesController {
   static async deleteSale(req, res) {
     try {
       const { id } = req.params;
-
       const deleted = await Sales.delete(id);
-
       if (!deleted) {
         return res.status(404).json({
           success: false,
           message: 'Sale not found'
         });
       }
-
       res.json({
         success: true,
         message: 'Sale deleted successfully and inventory restored'
@@ -287,16 +265,41 @@ export class SalesController {
     }
   }
 
-  // Get sales statistics
+  // Get sales statistics (UPDATED)
   static async getSalesStats(req, res) {
     try {
       const { date_from, date_to } = req.query;
+      const pool = getPool();
+      
+      // UPDATED QUERY: Includes pending_orders and paid_orders count
+      let query = `
+        SELECT
+          COUNT(*) as total_sales,
+          COALESCE(SUM(total), 0) as total_revenue,
+          COALESCE(AVG(total), 0) as average_sale,
+          COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today_sales,
+          COUNT(CASE WHEN status IN ('Pending', 'Processing') THEN 1 END) as pending_orders,
+          COUNT(CASE WHEN payment_status = 'Paid' THEN 1 END) as paid_orders
+        FROM sales
+        WHERE 1=1
+      `;
+      let params = [];
 
-      const stats = await Sales.getSalesStats(date_from, date_to);
+      if (date_from) {
+        query += ' AND DATE(created_at) >= ?';
+        params.push(date_from);
+      }
 
+      if (date_to) {
+        query += ' AND DATE(created_at) <= ?';
+        params.push(date_to);
+      }
+
+      const [rows] = await pool.execute(query, params);
+      
       res.json({
         success: true,
-        data: stats
+        data: rows[0]
       });
     } catch (error) {
       console.error('Error fetching sales stats:', error);
@@ -311,7 +314,6 @@ export class SalesController {
   static async getSaleItems(req, res) {
     try {
       const { sale_id } = req.params;
-
       const sale = await Sales.findById(sale_id);
       if (!sale) {
         return res.status(404).json({
@@ -319,9 +321,7 @@ export class SalesController {
           message: 'Sale not found'
         });
       }
-
       const items = await Sales.getSaleItems(sale_id);
-
       res.json({
         success: true,
         data: items
@@ -339,14 +339,12 @@ export class SalesController {
   static async uploadDeliveryProof(req, res) {
     try {
       const { id } = req.params;
-      
       if (!req.file) {
         return res.status(400).json({
           success: false,
           message: 'No delivery proof image provided'
         });
       }
-
       const sale = await Sales.findById(id);
       if (!sale) {
         return res.status(404).json({
@@ -354,10 +352,8 @@ export class SalesController {
           message: 'Sale not found'
         });
       }
-
       const proofPath = `/uploads/${req.file.filename}`;
       await Sales.attachDeliveryProof(id, proofPath);
-
       res.json({
         success: true,
         message: 'Delivery proof uploaded successfully',

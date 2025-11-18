@@ -90,6 +90,7 @@ const OrdersPage = () => {
   const fetchOrdersWithItems = async () => {
     try {
       setLoading(true); setError(null);
+      // Using getSales() defaults to 10 items which is fine for the table display
       const response = await salesAPI.getSales(); 
       const ordersWithItems = await Promise.all(response.map(async (order) => {
           try {
@@ -104,14 +105,17 @@ const OrdersPage = () => {
     } catch (err) { console.error('Error fetching orders:', err); setError(err.message || 'Failed to load orders'); } finally { setLoading(false); }
   };
 
+  // UPDATED: Use backend pre-calculated stats
   const fetchOrderStats = async () => {
     try {
       const response = await salesAPI.getSalesStats();
       if (response.success) {
-        const allSales = await salesAPI.getSales();
-        const pending = allSales.filter(o => o.status === 'Pending' || o.status === 'Processing').length;
-        const paid = allSales.filter(o => o.payment_status === 'Paid').length;
-        setStats({ ...response.data, pendingOrders: pending, paidOrders: paid });
+        setStats({ 
+            total_sales: response.data.total_sales, 
+            pendingOrders: response.data.pending_orders, 
+            paidOrders: response.data.paid_orders, 
+            total_revenue: response.data.total_revenue 
+        });
       }
     } catch (error) { console.error('Error fetching order stats:', error); }
   };
