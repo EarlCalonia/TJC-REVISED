@@ -10,6 +10,7 @@ import usersRoutes from './api/users.js';
 import settingsRoutes from './api/settings.js';
 import serialNumbersRoutes from './api/serialNumbers.js';
 import supplierRoutes from './api/suppliers.js';
+import customersRoutes from './api/customers.js';
 
 const router = express.Router();
 
@@ -25,6 +26,7 @@ router.use('/users', usersRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/serial-numbers', serialNumbersRoutes);
 router.use('/suppliers', supplierRoutes);
+router.use('/customers', customersRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

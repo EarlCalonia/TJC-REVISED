@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BsCartPlus, BsTrash, BsSearch } from 'react-icons/bs';
 import Navbar from '../../components/admin/Navbar';
 import '../../styles/SalesPage.css';
-import { salesAPI, inventoryAPI, settingsAPI } from '../../utils/api'; 
+import { salesAPI, inventoryAPI, settingsAPI, customersAPI } from '../../utils/api'; 
 import { serialNumberAPI } from '../../utils/serialNumberApi.js'; 
 import { generateSaleReceipt } from '../../utils/pdfGenerator';
 
@@ -41,11 +41,10 @@ const MessageBox = ({ isOpen, title, message, type, onClose, onConfirm }) => {
 };
 
 const SalesPage = () => {
-  const SAVED_CUSTOMERS_KEY = 'sales_saved_customers';
   const [searchQuery, setSearchQuery] = useState('');
   const [saleItems, setSaleItems] = useState([]);
   const [customerType, setCustomerType] = useState('new');
-  const [saveCustomerInfo, setSaveCustomerInfo] = useState(false);
+
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
@@ -56,11 +55,9 @@ const SalesPage = () => {
   const [addressDetails, setAddressDetails] = useState('');
   const [tenderedAmount, setTenderedAmount] = useState('');
   const [gcashRef, setGcashRef] = useState('');
-  const [savedCustomers, setSavedCustomers] = useState(() => {
-    if (typeof window === 'undefined') return [];
-    try { return JSON.parse(window.localStorage.getItem(SAVED_CUSTOMERS_KEY)) || []; } catch { return []; }
-  });
+  const [backendCustomers, setBackendCustomers] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+
   const [paymentSettings, setPaymentSettings] = useState({ cash_enabled: true, gcash_enabled: true, cod_enabled: true });
   const [customerSearch, setCustomerSearch] = useState('');
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
@@ -74,7 +71,7 @@ const SalesPage = () => {
   const [availableSerials, setAvailableSerials] = useState([]);
   const [selectedSerials, setSelectedSerials] = useState({});
   const [quantities, setQuantities] = useState({});
-  
+
   // Message Box State
   const [msgBox, setMsgBox] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
   const showMessage = (title, message, type = 'info', onConfirm = null) => setMsgBox({ isOpen: true, title, message, type, onConfirm });
@@ -83,7 +80,8 @@ const SalesPage = () => {
   const getSaleTotal = () => saleItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   const isCompanyDeliveryAvailable = useMemo(() => getSaleTotal() >= 5000, [saleItems]);
 
-  useEffect(() => { fetchProductsAndInventory(); fetchPaymentSettings(); }, []);
+  useEffect(() => { fetchProductsAndInventory(); fetchPaymentSettings(); fetchBackendCustomers(); }, []);
+
   const fetchPaymentSettings = async () => {
     try {
       const response = await settingsAPI.get(); 
@@ -93,13 +91,43 @@ const SalesPage = () => {
       }
     } catch (e) { console.error('Failed to fetch payment settings:', e); }
   };
-  useEffect(() => { window.localStorage.setItem(SAVED_CUSTOMERS_KEY, JSON.stringify(savedCustomers)); }, [savedCustomers]);
+
+  const fetchBackendCustomers = async () => {
+    try {
+      const response = await customersAPI.getCustomers();
+      const rows = response.data || [];
+      const backendCustomers = rows.map((row, index) => {
+        const fullName = row.customer_name || '';
+        const parts = fullName.trim().split(' ').filter(Boolean);
+        let first = fullName;
+        let last = '';
+        if (parts.length > 1) {
+          last = parts[parts.length - 1];
+          first = parts.slice(0, -1).join(' ');
+        }
+        return {
+          id: `backend-${index}`,
+          firstName: first,
+          middleName: '',
+          lastName: last,
+          contactNumber: row.contact || '',
+          address: row.address || '',
+          addressDetails: row.address || '',
+          location: ''
+        };
+      });
+      setBackendCustomers(backendCustomers);
+    } catch (e) {
+      console.error('Failed to fetch backend customers:', e);
+    }
+  };
+
   useEffect(() => {
     if (paymentOption !== 'Cash' && paymentOption !== 'Cash on Delivery') setTenderedAmount('');
     if (paymentOption !== 'GCash') setGcashRef('');
     if (paymentOption === 'Cash on Delivery') setTenderedAmount('');
   }, [paymentOption]);
-  
+
   const handlePaymentOptionChange = (value) => {
     const isCOD = value === 'Cash on Delivery';
     if (isCOD && !isCompanyDeliveryAvailable) {
@@ -110,7 +138,7 @@ const SalesPage = () => {
     setPaymentOption(value);
     if (isCOD && isCompanyDeliveryAvailable) setShippingOption('Company Delivery');
   };
-  
+
   const handleShippingOptionChange = (value) => {
     if (paymentOption === 'Cash on Delivery' && value === 'In-Store Pickup') {
       showMessage('Invalid Selection', "Cash on Delivery requires a delivery method.", 'warning');
@@ -263,34 +291,13 @@ const SalesPage = () => {
 
   const filteredSavedCustomers = useMemo(() => {
     const searchLower = customerSearch.toLowerCase();
-    if (!searchLower) return savedCustomers;
-    return savedCustomers.filter(c => c.lastName.toLowerCase().includes(searchLower) || c.firstName.toLowerCase().includes(searchLower) || c.contactNumber.includes(searchLower));
-  }, [customerSearch, savedCustomers]);
-
-  const handleSaveCustomer = () => {
-    const normalizedLastName = lastName.trim(); const normalizedFirstName = firstName.trim(); const normalizedContact = contactNumber.trim();
-    if (!normalizedLastName || !normalizedFirstName || !normalizedContact) {
-      showMessage('Missing Info', 'Please provide last name, first name, and contact number before saving.', 'warning');
-      return;
-    }
-    const existingIndex = savedCustomers.findIndex(customer => customer.id === selectedCustomerId || customer.contactNumber === normalizedContact);
-    const id = existingIndex >= 0 ? savedCustomers[existingIndex].id : Date.now().toString();
-    const updatedCustomer = { id, lastName: normalizedLastName, firstName: normalizedFirstName, middleName: middleName.trim(), contactNumber: normalizedContact, address, addressDetails: addressDetails.trim() };
-    setSavedCustomers(prev => {
-      const updated = [...prev];
-      if (existingIndex >= 0) updated[existingIndex] = updatedCustomer; else updated.push(updatedCustomer);
-      return updated.sort((a, b) => { const lastCompare = a.lastName.localeCompare(b.lastName); if (lastCompare !== 0) return lastCompare; return a.firstName.localeCompare(b.firstName); });
-    });
-    setSelectedCustomerId(id);
-    showMessage('Success', 'Customer saved successfully.', 'success');
-  };
-
-  const handleRemoveCustomer = () => {
-    if (!selectedCustomerId) { showMessage('Selection Required', 'Please select a saved customer to remove.', 'warning'); return; }
-    setSavedCustomers(prev => prev.filter(customer => customer.id !== selectedCustomerId));
-    setSelectedCustomerId('');
-    showMessage('Removed', 'Saved customer removed.', 'info');
-  };
+    if (!searchLower) return backendCustomers;
+    return backendCustomers.filter(c =>
+      (c.lastName || '').toLowerCase().includes(searchLower) ||
+      (c.firstName || '').toLowerCase().includes(searchLower) ||
+      (c.contactNumber || '').includes(searchLower)
+    );
+  }, [customerSearch, backendCustomers]);
 
   const clearSale = async () => {
     if (saleItems.length === 0) return;
@@ -451,9 +458,42 @@ const SalesPage = () => {
               </div>
               <div className="customer-section">
                 <h2>Customer Information</h2>
-                <div className="customer-type-selection"><label className="customer-type-label">Customer Type</label><div className="radio-group"><label className="radio-option"><input type="radio" name="customerType" value="new" checked={customerType === 'new'} onChange={(e) => { setCustomerType(e.target.value); setSelectedCustomerId(''); clearCustomerInfo(); }} /><span>New Customer</span></label><label className="radio-option"><input type="radio" name="customerType" value="existing" checked={customerType === 'existing'} onChange={(e) => { setCustomerType(e.target.value); setSaveCustomerInfo(false); }} /><span>Existing Customer</span></label></div></div>
+                <div className="customer-type-selection"><label className="customer-type-label">Customer Type</label><div className="radio-group"><label className="radio-option"><input type="radio" name="customerType" value="new" checked={customerType === 'new'} onChange={(e) => { setCustomerType(e.target.value); setSelectedCustomerId(''); clearCustomerInfo(); }} /><span>New Customer</span></label><label className="radio-option"><input type="radio" name="customerType" value="existing" checked={customerType === 'existing'} onChange={(e) => { setCustomerType(e.target.value); }} /><span>Existing Customer</span></label></div></div>
                 <h3 className="customer-detail-heading">Customer Detail</h3>
-                {customerType === 'existing' && ( <div className="form-group" style={{ position: 'relative' }}><label>Select Customer:</label><input type="text" value={customerSearch} onChange={handleCustomerSearchChange} onFocus={() => setIsCustomerDropdownOpen(true)} onBlur={() => setTimeout(() => setIsCustomerDropdownOpen(false), 200)} placeholder={savedCustomers.length === 0 ? 'No saved customers' : 'Type to search name or number...'} className="form-input" disabled={savedCustomers.length === 0} autoComplete="off" />{isCustomerDropdownOpen && filteredSavedCustomers.length > 0 && (<div className="customer-search-dropdown">{filteredSavedCustomers.length === 0 ? (<div className="customer-search-item-none">No customer found.</div>) : (filteredSavedCustomers.map(customer => (<div key={customer.id} className="customer-search-item" onMouseDown={() => handleSelectCustomer(customer)}><strong>{customer.lastName}, {customer.firstName}</strong><small>{customer.contactNumber}</small></div>)))}</div>)}</div> )}
+                {customerType === 'existing' && (
+                  <div className="form-group" style={{ position: 'relative' }}>
+                    <label>Select Customer:</label>
+                    <input
+                      type="text"
+                      value={customerSearch}
+                      onChange={handleCustomerSearchChange}
+                      onFocus={() => setIsCustomerDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setIsCustomerDropdownOpen(false), 200)}
+                      placeholder={backendCustomers.length === 0 ? 'No customers found in system' : 'Type to search name or number...'}
+                      className="form-input"
+                      disabled={backendCustomers.length === 0}
+                      autoComplete="off"
+                    />
+                    {isCustomerDropdownOpen && (
+                      <div className="customer-search-dropdown">
+                        {filteredSavedCustomers.length === 0 ? (
+                          <div className="customer-search-item-none">No customer found.</div>
+                        ) : (
+                          filteredSavedCustomers.map(customer => (
+                            <div
+                              key={customer.id}
+                              className="customer-search-item"
+                              onMouseDown={() => handleSelectCustomer(customer)}
+                            >
+                              <strong>{customer.lastName}, {customer.firstName}</strong>
+                              <small>{customer.contactNumber}</small>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="customer-info">
                   <div className="form-group"><label>First Name</label><input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Enter First Name" className="form-input" disabled={customerType === 'existing'} /></div>
                   <div className="form-group"><label>Middle Name</label><input type="text" value={middleName} onChange={(e) => setMiddleName(e.target.value)} placeholder="Enter Middle Name" className="form-input" disabled={customerType === 'existing'} /></div>
@@ -461,8 +501,7 @@ const SalesPage = () => {
                   <div className="form-group"><label>Contact Number</label><input type="text" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} placeholder="Enter Contact Number" className="form-input" disabled={customerType === 'existing'} /></div>
                   <div className="form-group"><label>Full Address</label><input type="text" value={addressDetails} onChange={(e) => setAddressDetails(e.target.value)} placeholder="Street/Barangay/City" className="form-input" disabled={customerType === 'existing'} /></div>
                   <div className="form-group"><label>Location</label><select value={address} onChange={(e) => setAddress(e.target.value)} className="form-select" disabled={customerType === 'existing'}><option value="">Choose Location</option><option value="Manila">Manila</option><option value="Pampanga">Pampanga</option><option value="Bulacan">Bulacan</option></select></div>
-                  {customerType === 'new' && (<div className="form-group"><label className="checkbox-label"><input type="checkbox" checked={saveCustomerInfo} onChange={(e) => setSaveCustomerInfo(e.target.checked)} className="checkbox-input" /><span>Save this Customer Information</span></label></div>)}
-                  <div className="customer-form-actions"><button onClick={clearCustomerInfo} className="btn btn-outline">Clear Form</button>{customerType === 'new' && saveCustomerInfo && (<button onClick={handleSaveCustomer} className="btn btn-success">Save</button>)}</div>
+                  <div className="customer-form-actions"><button onClick={clearCustomerInfo} className="btn btn-outline">Clear Form</button></div>
                 </div>
               </div>
               <div className="payment-shipping-section">

@@ -81,32 +81,41 @@ export class DashboardController {
   }
 
   // Get low stock items
-  static async getLowStockItems(req, res) {
-    try {
-      const pool = getPool();
+  // Get low stock items
+static async getLowStockItems(req, res) {
+  try {
+    const pool = getPool();
 
-      const [items] = await pool.execute(
-        `SELECT p.product_id, p.name, i.stock as remaining, i.reorder_point as threshold
-         FROM products p
-         JOIN inventory i ON p.product_id = i.product_id
-         WHERE i.stock <= i.reorder_point
-         AND p.status = 'Active'
-         ORDER BY i.stock ASC`
-      );
+    // REVISION: Used LEFT JOIN and COALESCE to catch products with NO inventory record (effectively 0 stock)
+    const [items] = await pool.execute(
+      `SELECT 
+          p.product_id, 
+          p.name, 
+          COALESCE(i.stock, 0) as remaining, 
+          COALESCE(i.reorder_point, 10) as threshold
+       FROM products p
+       LEFT JOIN inventory i ON p.product_id = i.product_id
+       WHERE 
+         p.status = 'Active' AND (
+           COALESCE(i.stock, 0) = 0 
+           OR 
+           COALESCE(i.stock, 0) <= COALESCE(i.reorder_point, 10)
+         )
+       ORDER BY remaining ASC`
+    );
 
-      res.json({
-        success: true,
-        data: items
-      });
-    } catch (error) {
-      console.error('Error fetching low stock items:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch low stock items'
-      });
-    }
+    res.json({
+      success: true,
+      data: items
+    });
+  } catch (error) {
+    console.error('Error fetching low stock items:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch low stock items'
+    });
   }
-
+}
   // Get daily sales
   static async getDailySales(req, res) {
     try {

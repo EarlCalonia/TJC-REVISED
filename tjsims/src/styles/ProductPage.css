@@ -33,15 +33,6 @@
 .delete-btn { color: var(--color-danger); }
 .delete-btn:hover { background-color: #ffebee; }
 
-/* Striped rows for product table */
-.product-page-content .table-section .table tbody tr:nth-of-type(even) {
-  background-color: #f8f9fa !important;
-}
-
-.product-page-content .table-section .table tbody tr:nth-of-type(even):hover {
-  background-color: #e9ecef !important;
-}
-
 /* Form Styles */
 .image-upload-container {
   border: 2px dashed var(--color-border);

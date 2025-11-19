@@ -9,6 +9,19 @@ const handleResponse = async (response) => {
   return response.json();
 };
 
+// Customers API
+export const customersAPI = {
+  getCustomers: async (search = '') => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    const query = params.toString();
+    const response = await fetch(`${API_BASE_URL}/customers${query ? `?${query}` : ''}`, {
+      credentials: 'include'
+    });
+    return handleResponse(response);
+  }
+};
+
 // Authentication API
 export const authAPI = {
   login: async (email, password) => {

@@ -565,7 +565,7 @@
   color: var(--color-text-dark);
   border: 1px solid var(--color-border);
 }
-.btn-outline:hover:not(:disabled) {
+.btn-outline:hover:not(:disabled) { 
   background-color: var(--color-bg);
 }
 
@@ -588,34 +588,35 @@
 .table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 0.85rem;
 }
 
 .table th {
   background-color: var(--color-primary);
   color: var(--color-text-white);
-  padding: 15px;
+  padding: 10px 12px;
   text-align: left;
   font-weight: 600;
-  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .table td {
-  padding: 15px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--color-border-light);
-  font-size: 0.9rem;
   color: var(--color-text-dark);
 }
 
-.table tbody tr:nth-child(even),
-.table-section table tbody tr:nth-of-type(even),
-.table-container table tbody tr:nth-of-type(even) {
-  background-color: var(--color-bg);
+.table tbody tr:nth-child(odd) {
+  background-color: #f5f9ff;
 }
 
-.table tbody tr:hover,
-.table-section table tbody tr:nth-of-type(even):hover,
-.table-container table tbody tr:nth-of-type(even):hover {
-  background-color: #e9ecef;
+.table tbody tr:nth-child(even) {
+  background-color: #e0e0e0 !important;
+}
+
+.table tbody tr:hover {
+  background-color: #e1efff;
   transition: background-color 0.2s ease;
 }
 

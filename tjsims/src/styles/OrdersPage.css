@@ -35,15 +35,6 @@
 .product-list { max-width: 250px; }
 .product-names { font-size: 0.9rem; line-height: 1.4; }
 
-/* Striped table rows for better readability */
-.table-section .table tbody tr:nth-child(even) {
-  background-color: #f8f9fa; /* A light gray for the stripe effect */
-}
-
-.table-section .table tbody tr:hover {
-  background-color: #e9ecef; /* A slightly darker gray for hover */
-}
-
 /* Specific Badge Colors for Orders Page */
 .payment-status-badge {
   padding: 4px 8px;
@@ -60,6 +51,7 @@
 .payment-status-badge.card { background-color: #e2e3e5; color: #383d41; }
 .payment-status-badge.cash-on-delivery { background-color: #fff3cd; color: #856404; }
 .payment-status-badge.refunded { background-color: #f8d7da; color: #721c24; }
+.payment-status-badge.partially-refunded { background-color: #ffe5d0; color: #a04900; }
 .payment-status-badge.cancelled { background-color: #e2e3e5; color: #383d41; }
 .payment-status-badge.unpaid { background-color: #fff3cd; color: #856404; }
 
@@ -77,7 +69,7 @@
 .order-status-badge.processing { background-color: #d1ecf1; color: #0c5460; }
 .order-status-badge.shipping { background-color: #d4edda; color: #155724; }
 .order-status-badge.out-for-delivery { background-color: #cce7ff; color: #004085; }
-.order-status-badge.canceled { background-color: #f8d7da; color: #721c24; }
+.order-status-badge.canceled, .order-status-badge.cancelled { background-color: #fc8f98; color: #721c24; }
 .order-status-badge.completed { background-color: #d4edda; color: #155724; }
 .order-status-badge.returned { background-color: #6c757d; color: white; }
 .order-status-badge.partially-returned { background-color: var(--color-warning); color: white; }

@@ -88,7 +88,15 @@ const DashboardSections = () => {
           dashboardAPI.getSalesByCategory()
         ]);
 
-        if (lowStockRes.success) setLowStock(lowStockRes.data || []);
+        if (lowStockRes.success) {
+          const normalizedLowStock = (lowStockRes.data || []).map(item => ({
+            ...item,
+            remaining: Number(item.remaining),
+            threshold: typeof item.threshold === 'undefined' ? item.threshold : Number(item.threshold)
+          }));
+          setLowStock(normalizedLowStock);
+        }
+
         if (fastMovingRes.success) setFastMoving(fastMovingRes.data || []);
         if (slowMovingRes.success) setSlowMoving(slowMovingRes.data || []);
         if (salesByCategoryRes.success) setSalesByCategory(salesByCategoryRes.data || []);
@@ -318,82 +326,86 @@ const DashboardSections = () => {
         </div>
 
         {/* Right Column: Inventory Alerts */}
-        <div className="dashboard-col" style={{ flex: 1 }}>
-          <div className="dashboard-card">
-            
-            <div className="card-header-action">
-              <h2>Inventory Alerts</h2>
-              <Link to="/admin/inventory" className="btn btn-outline btn-small">
-                Manage Inventory
-              </Link>
-            </div>
+<div className="dashboard-col" style={{ flex: 1 }}>
+  <div className="dashboard-card">
+    
+    <div className="card-header-action">
+      <h2>Inventory Alerts</h2>
+      <Link to="/admin/inventory" className="btn btn-outline btn-small">
+        Manage Inventory
+      </Link>
+    </div>
 
-            <div className="card-tabs">
-              <button
-                className={`card-tab-btn ${stockTab === 'low' ? 'active' : ''}`}
-                onClick={() => setStockTab('low')}
-              >
-                Low Stock ({lowStock.filter(item => item.remaining > 0).length})
-              </button>
-              <button
-                className={`card-tab-btn ${stockTab === 'out' ? 'active' : ''}`}
-                onClick={() => setStockTab('out')}
-              >
-                Out of Stock ({lowStock.filter(item => item.remaining === 0).length})
-              </button>
-            </div>
+    {/* --- REVISION: Updated Filter Logic --- */}
+    <div className="card-tabs">
+      <button
+        className={`card-tab-btn ${stockTab === 'low' ? 'active' : ''}`}
+        onClick={() => setStockTab('low')}
+      >
+        {/* Only show items strictly greater than 0 */}
+        Low Stock ({lowStock.filter(item => item.remaining > 0).length})
+      </button>
+      <button
+        className={`card-tab-btn ${stockTab === 'out' ? 'active' : ''}`}
+        onClick={() => setStockTab('out')}
+      >
+        {/* Show 0 AND negative stock */}
+        Out of Stock ({lowStock.filter(item => item.remaining <= 0).length})
+      </button>
+    </div>
 
-            {stockTab === 'low' ? (
-              // Tab 1: Low Stock (stock > 0)
-              <div className="table-container">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th>Remaining</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lowStock.filter(item => item.remaining > 0).length > 0 ? (
-                      lowStock.filter(item => item.remaining > 0).map(item => (
-                        <tr key={item.product_id}>
-                          <td>{item.name}</td>
-                          <td style={{ color: '#fd7e14', fontWeight: 'bold' }}>{item.remaining}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr><td colSpan="2" style={{ textAlign: 'center' }}>No items are low on stock.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+    {stockTab === 'low' ? (
+      // Tab 1: Low Stock (stock > 0)
+      <div className="table-container">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Remaining</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lowStock.filter(item => item.remaining > 0).length > 0 ? (
+              lowStock.filter(item => item.remaining > 0).map(item => (
+                <tr key={item.product_id}>
+                  <td>{item.name}</td>
+                  <td style={{ color: '#fd7e14', fontWeight: 'bold' }}>{item.remaining}</td>
+                </tr>
+              ))
             ) : (
-              // Tab 2: Out of Stock (stock === 0)
-              <div className="table-container">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th>Remaining</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lowStock.filter(item => item.remaining === 0).length > 0 ? (
-                      lowStock.filter(item => item.remaining === 0).map(item => (
-                        <tr key={item.product_id}>
-                          <td>{item.name}</td>
-                          <td style={{ color: '#dc3545', fontWeight: 'bold' }}>0</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr><td colSpan="2" style={{ textAlign: 'center' }}>All items are in stock.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <tr><td colSpan="2" style={{ textAlign: 'center' }}>No items are low on stock.</td></tr>
             )}
-          </div>
-        </div>
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      // Tab 2: Out of Stock (stock <= 0)
+      <div className="table-container">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Remaining</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* REVISION: Changed condition to <= 0 to catch negative stock */}
+            {lowStock.filter(item => item.remaining <= 0).length > 0 ? (
+              lowStock.filter(item => item.remaining <= 0).map(item => (
+                <tr key={item.product_id}>
+                  <td>{item.name}</td>
+                  <td style={{ color: '#dc3545', fontWeight: 'bold' }}>{item.remaining}</td>
+                </tr>
+              ))
+            ) : (
+              <tr><td colSpan="2" style={{ textAlign: 'center' }}>All items are in stock.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+</div>
       </div>
 
       {/* Row 2: Category Sales + Product Performance */}

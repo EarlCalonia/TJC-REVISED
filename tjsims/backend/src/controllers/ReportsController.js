@@ -7,147 +7,124 @@ export class ReportsController {
   static convertToPhilippineTime(utcDateString) {
     if (!utcDateString) return null;
     const utcDate = new Date(utcDateString);
-    // Add 8 hours for Philippine Time (UTC+8)
     utcDate.setHours(utcDate.getHours() + 8);
     return utcDate.toISOString().replace('Z', '+08:00');
   }
 
-  // Get sales report data with pagination and filtering
+  // REVISED: Get sales report data paginated by ITEMS, filtering ONLY Completed & Partially Returned
   static async getSalesReport(req, res) {
     try {
       const { page = 1, limit = 10, start_date, end_date } = req.query;
-
       const offset = (page - 1) * limit;
-
-      // Build query for sales with filtering - get individual sales records (exclude fully refunded)
-      let salesQuery = `
-        SELECT s.id, s.sale_number, s.customer_name, s.contact, s.total, s.payment,
-               s.created_at, s.status, s.payment_status
-        FROM sales s
-        WHERE 1=1
-          AND (s.status = 'Completed' OR s.status = 'Partially Returned' OR s.status IS NULL)
-          AND (s.payment_status != 'Refunded' OR s.payment_status IS NULL)
-      `;
-      let salesParams = [];
-
-      if (start_date) {
-        salesQuery += ' AND DATE(s.created_at) >= ?';
-        salesParams.push(start_date);
-      }
-
-      if (end_date) {
-        salesQuery += ' AND DATE(s.created_at) <= ?';
-        salesParams.push(end_date);
-      }
-
-      salesQuery += ' ORDER BY s.created_at DESC LIMIT ? OFFSET ?';
-      salesParams.push(parseInt(limit), parseInt(offset));
-
       const pool = getPool();
-      const [sales] = await pool.execute(salesQuery, salesParams);
 
-      // Get total count for pagination (apply same filters - exclude fully refunded)
-      let countQuery = "SELECT COUNT(*) as total FROM sales WHERE 1=1 AND (status = 'Completed' OR status = 'Partially Returned' OR status IS NULL) AND (payment_status != 'Refunded' OR payment_status IS NULL)";
-      let countParams = [];
+      // 1. Base conditions: Strictly 'Completed' or 'Partially Returned'
+      // Removed 's.status IS NULL' to ensure strict filtering
+      const baseWhere = `
+        WHERE s.status IN ('Completed', 'Partially Returned')
+        AND (s.payment_status != 'Refunded' OR s.payment_status IS NULL)
+        AND (si.quantity - COALESCE(si.returned_quantity, 0)) > 0
+      `;
+
+      let dateFilter = '';
+      let params = [];
 
       if (start_date) {
-        countQuery += ' AND DATE(created_at) >= ?';
-        countParams.push(start_date);
+        dateFilter += ' AND DATE(s.created_at) >= ?';
+        params.push(start_date);
       }
-
       if (end_date) {
-        countQuery += ' AND DATE(created_at) <= ?';
-        countParams.push(end_date);
+        dateFilter += ' AND DATE(s.created_at) <= ?';
+        params.push(end_date);
       }
 
-      const [totalResult] = await pool.execute(countQuery, countParams);
-      const total = totalResult[0].total;
-      const totalPages = Math.ceil(total / limit);
+      // 2. Fetch Paginated Items
+      const query = `
+        SELECT 
+          si.product_name,
+          si.brand,
+          si.price as unit_price,
+          (si.quantity - COALESCE(si.returned_quantity, 0)) as quantity_sold,
+          ((si.quantity - COALESCE(si.returned_quantity, 0)) * si.price) as total_item_price,
+          s.id as sale_id,
+          s.sale_number as order_id,
+          s.customer_name,
+          s.created_at as order_date
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        ${baseWhere}
+        ${dateFilter}
+        ORDER BY s.created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+      
+      const queryParams = [...params, parseInt(limit), parseInt(offset)];
+      const [items] = await pool.execute(query, queryParams);
 
-      // For each sale, get its items and calculate aggregated data
-      const salesWithItems = [];
-      for (const sale of sales) {
-        try {
-          const items = await Sales.getSaleItems(sale.id);
-          const itemCount = items.length;
-          const calculatedTotal = items.reduce((sum, item) => sum + parseFloat(item.subtotal || 0), 0);
+      // 3. Get Total Count
+      const countQuery = `
+        SELECT COUNT(*) as total 
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        ${baseWhere}
+        ${dateFilter}
+      `;
+      const [countResult] = await pool.execute(countQuery, params);
+      const totalItems = countResult[0].total;
+      const totalPages = Math.ceil(totalItems / limit);
 
-          salesWithItems.push({
-            id: sale.id,
-            orderId: sale.sale_number,
-            customerName: sale.customer_name,
-            contact: sale.contact,
-            orderDate: ReportsController.convertToPhilippineTime(sale.created_at),
-            totalAmount: sale.total, // <--- Value stored as totalAmount
-            paymentMethod: sale.payment,
-            status: sale.status || 'N/A',
-            itemCount: itemCount,
-            calculatedTotal: calculatedTotal,
-            items: items
-              .map(item => {
-                // Calculate actual sold quantity (excluding returned items)
-                const returnedQty = item.returned_quantity || 0;
-                const actualQty = (item.quantity || 0) - returnedQty;
-                
-                // Skip fully returned items
-                if (actualQty <= 0) return null;
-                
-                // Adjust price for partially returned items
-                const actualPrice = (item.price || 0) * actualQty;
-                
-                return {
-                  productName: item.product_name || 'N/A',
-                  brand: item.brand || 'N/A',
-                  quantity: actualQty,
-                  unitPrice: item.price || 0,
-                  totalPrice: actualPrice
-                };
-              })
-              .filter(item => item !== null) // Remove fully returned items
-          });
-        } catch (error) {
-          console.error(`Error fetching items for sale ${sale.id}:`, error);
-          // Add sale without items if there's an error
-          salesWithItems.push({
-            id: sale.id,
-            orderId: sale.sale_number,
-            customerName: sale.customer_name,
-            contact: sale.contact,
-            orderDate: ReportsController.convertToPhilippineTime(sale.created_at),
-            totalAmount: sale.total,
-            paymentMethod: sale.payment,
-            status: sale.status || 'N/A',
-            itemCount: 0,
-            calculatedTotal: 0,
-            items: []
-          });
-        }
-      }
-
-      // Calculate summary statistics
-      // FIX: Updated to use 'sale.totalAmount' instead of 'sale.total'
+      // 4. Calculate Global Summary
+      const summaryQuery = `
+        SELECT 
+          COUNT(DISTINCT s.id) as total_sales_count,
+          SUM((si.quantity - COALESCE(si.returned_quantity, 0)) * si.price) as total_revenue
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        ${baseWhere}
+        ${dateFilter}
+      `;
+      const [summaryResult] = await pool.execute(summaryQuery, params);
+      
       const summary = {
-        totalSales: total,
-        totalRevenue: salesWithItems.reduce((sum, sale) => sum + parseFloat(sale.totalAmount || 0), 0),
-        averageSale: salesWithItems.length > 0 ? salesWithItems.reduce((sum, sale) => sum + parseFloat(sale.totalAmount || 0), 0) / salesWithItems.length : 0,
-        totalItems: salesWithItems.reduce((sum, sale) => sum + sale.items.length, 0)
+        totalSales: summaryResult[0].total_sales_count || 0,
+        totalRevenue: summaryResult[0].total_revenue || 0,
+        averageSale: 0,
+        totalItems: totalItems
       };
+
+      if (summary.totalSales > 0) {
+        summary.averageSale = summary.totalRevenue / summary.totalSales;
+      }
+
+      // 5. Format Data
+      const formattedItems = items.map(item => ({
+        id: `${item.sale_id}-${item.product_name}`,
+        orderId: item.order_id,
+        customerName: item.customer_name,
+        productName: item.product_name,
+        brand: item.brand,
+        quantity: item.quantity_sold,
+        unitPrice: parseFloat(item.unit_price),
+        totalPrice: parseFloat(item.total_item_price),
+        orderDate: ReportsController.convertToPhilippineTime(item.order_date)
+      }));
 
       res.json({
         success: true,
         data: {
-          sales: salesWithItems,
+          sales: formattedItems,
           pagination: {
             current_page: parseInt(page),
             per_page: parseInt(limit),
-            total: total,
+            total: totalItems,
             total_pages: totalPages,
             from: offset + 1,
-            to: Math.min(offset + parseInt(limit), total)
+            to: Math.min(offset + parseInt(limit), totalItems)
           },
           summary: summary
         }
       });
+
     } catch (error) {
       console.error('Error fetching sales report:', error);
       res.status(500).json({
@@ -157,6 +134,7 @@ export class ReportsController {
     }
   }
 
+  // ... (Keep other methods: getInventoryReport, getReturnsReport, getFilterOptions unchanged)
   // Get inventory report data with pagination
   static async getInventoryReport(req, res) {
     try {

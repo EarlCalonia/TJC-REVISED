@@ -86,8 +86,53 @@ const ReportsPage = () => {
   useEffect(() => { fetchReportData(); }, [activeTab, startDate, endDate, currentPage, stockStatus, brandFilter, categoryFilter]);
 
   const fetchFilterOptions = async () => { try { const result = await reportsAPI.getFilterOptions(); if (result.success) { setBrands(result.data.brands || []); setCategories(result.data.categories || []); } } catch (error) { console.error('Error fetching filter options:', error); } };
-  const fetchReportData = async () => { try { setLoading(true); setError(null); setSummary(null); const filters = { page: currentPage, limit: itemsPerPage, ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }) }; if (activeTab === 'sales') { const result = await reportsAPI.getSalesReport(filters); setSalesData(result.sales || []); setPagination(result.pagination || {}); setSummary(result.summary || null); } else if (activeTab === 'inventory') { const inventoryFilters = { ...filters, ...(stockStatus && stockStatus !== 'All Status' ? { stock_status: stockStatus } : {}), ...(brandFilter && brandFilter !== 'All Brand' ? { brand: brandFilter } : {}), ...(categoryFilter && categoryFilter !== 'All Categories' ? { category: categoryFilter } : {}) }; const result = await reportsAPI.getInventoryReport(inventoryFilters); setInventoryData(result.inventory || []); setPagination(result.pagination || {}); setSummary(result.summary || null); } else if (activeTab === 'returns') { const returnsFilters = { ...filters }; const result = await reportsAPI.getReturnsReport(returnsFilters); setReturnsData(result.returns || []); setPagination(result.pagination || {}); setSummary(result.summary || null); } } catch (err) { console.error('Error fetching report data:', err); setError('Failed to load report data'); } finally { setLoading(false); } };
-  const getCurrentData = () => { if (activeTab === 'sales') { const flattenedSales = salesData.flatMap(order => (order.items || []).map(item => ({ id: `${order.id}-${item.productName}-${item.quantity}-${item.unitPrice}`, orderId: order.orderId, customerName: order.customerName, orderDate: order.orderDate, totalAmount: order.totalAmount, ...item }))); return flattenedSales; } else if (activeTab === 'inventory') { return inventoryData; } else if (activeTab === 'returns') { return returnsData; } return []; };
+  
+  const fetchReportData = async () => { 
+    try { 
+      setLoading(true); 
+      setError(null); 
+      setSummary(null); 
+      const filters = { page: currentPage, limit: itemsPerPage, ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }) }; 
+      
+      if (activeTab === 'sales') { 
+        const result = await reportsAPI.getSalesReport(filters); 
+        setSalesData(result.sales || []); 
+        setPagination(result.pagination || {}); 
+        setSummary(result.summary || null); 
+      } else if (activeTab === 'inventory') { 
+        const inventoryFilters = { ...filters, ...(stockStatus && stockStatus !== 'All Status' ? { stock_status: stockStatus } : {}), ...(brandFilter && brandFilter !== 'All Brand' ? { brand: brandFilter } : {}), ...(categoryFilter && categoryFilter !== 'All Categories' ? { category: categoryFilter } : {}) }; 
+        const result = await reportsAPI.getInventoryReport(inventoryFilters); 
+        setInventoryData(result.inventory || []); 
+        setPagination(result.pagination || {}); 
+        setSummary(result.summary || null); 
+      } else if (activeTab === 'returns') { 
+        const returnsFilters = { ...filters }; 
+        const result = await reportsAPI.getReturnsReport(returnsFilters); 
+        setReturnsData(result.returns || []); 
+        setPagination(result.pagination || {}); 
+        setSummary(result.summary || null); 
+      } 
+    } catch (err) { 
+      console.error('Error fetching report data:', err); 
+      setError('Failed to load report data'); 
+    } finally { 
+      setLoading(false); 
+    } 
+  };
+
+  // --- FIXED: getCurrentData no longer flattens salesData ---
+  const getCurrentData = () => {
+    if (activeTab === 'sales') {
+      return salesData; // The backend now sends flat items
+    } else if (activeTab === 'inventory') {
+      return inventoryData;
+    } else if (activeTab === 'returns') {
+      return returnsData;
+    }
+    return [];
+  };
+
+  // --- FIXED: Helper functions for pagination ---
   const getTotalItems = () => { return pagination.total || 0; };
   const getTotalPages = () => { return pagination.total_pages || Math.ceil(getTotalItems() / itemsPerPage); };
   const handlePageChange = (page) => { setCurrentPage(page); };
